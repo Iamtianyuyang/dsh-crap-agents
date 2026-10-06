@@ -1,0 +1,20 @@
+# dsh-gauntlet 的 bundle patch：被 dsh 作为一个 profile 层加载。
+#
+# 只挂一行插件服务。它在代码里（lib/preset.js）声明「Gauntlet 小队」Agent preset——
+# 出现在 Agent 预设的「自定义」分组里：Leader（编排者）+ 7 个阶段子 agent（摸底→规格→编码→清理→加固→QA→证据包）。
+#
+# 每个阶段用哪个模型：在 Web 的「插件」→「已安装」→ dsh-gauntlet 页面修改（存在本行 id `gauntlet` 的配置里），
+# 改动只影响之后新建的 Gauntlet 会话。也可以直接写进 profile 的 cordis.patch.yml（会替换本行的整份 config）：
+#
+#   - id: gauntlet
+#     name: dsh-gauntlet
+#     config:
+#       stages:
+#         coder:    { provider: deepseek, model: deepseek-reasoner, reasoningEffort: high }
+#         hardener: { provider: deepseek, model: deepseek-reasoner }
+#
+# 安装：dsh plugin --profile web add github:Iamtianyuyang/dsh-crap-agents
+# 本地开发：dsh plugin --profile web add "link:$(pwd)"
+- insert:
+    - id: gauntlet
+      name: dsh-gauntlet

@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "roman：阿拉伯数字 ⇄ 罗马数字",
+    "subtitle": "谦卑的 main 只转发 argv；行为在 app 层，规则在 domain 层；测试从应用边界驱动",
+    "output": "gauntlet-out/evidence/diagrams/roman.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Iamtianyuyang/multica-crap-agents.git",
+      "revision": "a39e7364ab4ac367fd0013cb3a6270a61198e970"
+    }
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "命令行用户",
+      "sublabel": "roman 2026 MCMXCIV",
+      "pos": [
+        40,
+        200
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "main",
+      "type": "frontend",
+      "label": "roman 可执行文件",
+      "sublabel": "main()：只转发 argv",
+      "pos": [
+        310,
+        200
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "sources": [
+        {
+          "path": "examples/roman-kata/src/app/main.cpp",
+          "line": 7,
+          "end_line": 9,
+          "label": "main"
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "roman::cli::run",
+      "sublabel": "逐个参数转换，汇总退出码",
+      "pos": [
+        620,
+        200
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "examples/roman-kata/src/app/cli.cpp",
+          "line": 40,
+          "end_line": 48,
+          "label": "run"
+        },
+        {
+          "path": "examples/roman-kata/src/app/cli.cpp",
+          "line": 19,
+          "end_line": 36,
+          "label": "convert"
+        }
+      ]
+    },
+    {
+      "id": "domain",
+      "type": "backend",
+      "label": "roman 领域规则",
+      "sublabel": "to_roman / from_roman",
+      "pos": [
+        940,
+        200
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "examples/roman-kata/src/domain/roman.cpp",
+          "line": 48,
+          "end_line": 58,
+          "label": "to_roman"
+        },
+        {
+          "path": "examples/roman-kata/src/domain/roman.cpp",
+          "line": 60,
+          "end_line": 66,
+          "label": "from_roman"
+        }
+      ]
+    },
+    {
+      "id": "acceptance",
+      "type": "security",
+      "label": "验收测试",
+      "sublabel": "18 个 Gherkin 场景",
+      "pos": [
+        620,
+        380
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "examples/roman-kata/acceptance/steps/roman_steps.cpp",
+          "line": 34,
+          "end_line": 40,
+          "label": "我执行转换"
+        }
+      ]
+    },
+    {
+      "id": "unit",
+      "type": "security",
+      "label": "单元测试",
+      "sublabel": "GoogleTest",
+      "pos": [
+        940,
+        380
+      ],
+      "size": [
+        170,
+        60
+      ],
+      "sources": [
+        {
+          "path": "examples/roman-kata/tests/unit/roman_test.cpp",
+          "line": 8,
+          "end_line": 13,
+          "label": "ToRoman"
+        },
+        {
+          "path": "examples/roman-kata/tests/unit/cli_test.cpp",
+          "line": 9,
+          "end_line": 14,
+          "label": "Cli"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "app 模块（src/app）",
+      "wraps": [
+        "main",
+        "cli"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "domain 模块（src/domain）",
+      "wraps": [
+        "domain"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-argv",
+      "from": "user",
+      "to": "main",
+      "label": "argv",
+      "variant": "emphasis"
+    },
+    {
+      "id": "main-run",
+      "from": "main",
+      "to": "cli",
+      "label": "run(args, out, err)"
+    },
+    {
+      "id": "cli-domain",
+      "from": "cli",
+      "to": "domain",
+      "label": "to_roman / from_roman"
+    },
+    {
+      "id": "acc-cli",
+      "from": "acceptance",
+      "to": "cli",
+      "label": "驱动应用边界",
+      "variant": "dashed"
+    },
+    {
+      "id": "unit-domain",
+      "from": "unit",
+      "to": "domain",
+      "label": "锁住规则细节",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入口",
+      "items": [
+        "main.cpp 只把 argv 交给 cli::run",
+        "输出与错误通过 std::ostream 注入，便于测试"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "规则",
+      "items": [
+        "to_roman：1..3999 → 规范写法",
+        "from_roman：只接受能原样转回的规范写法"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "测试",
+      "items": [
+        "验收场景驱动 cli::run（应用边界）",
+        "单元测试锁住领域规则与 CLI 细节"
+      ]
+    }
+  ]
+}

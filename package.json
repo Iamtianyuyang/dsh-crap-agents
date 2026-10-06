@@ -1,0 +1,95 @@
+{
+  "name": "dsh-gauntlet",
+  "version": "2.0.0",
+  "description": "DeepSeek Harness 插件：「Gauntlet 小队」Agent 预设——按 Bob 大叔的方法把 agent 关进一层层可度量的闸门：需求 → 验收测试 → TDD → 全量代码质量 → 变异测试 → QA，最后产出一页 5 分钟看完的离线证据包。人不读 AI 写的代码，人读证据。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-plugins",
+    "deepseek-harness",
+    "agent-preset",
+    "gauntlet",
+    "tdd",
+    "mutation-testing",
+    "crap",
+    "code-quality",
+    "acceptance-testing",
+    "skills"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Iamtianyuyang/dsh-crap-agents.git"
+  },
+  "homepage": "https://github.com/Iamtianyuyang/dsh-crap-agents#readme",
+  "bugs": {
+    "url": "https://github.com/Iamtianyuyang/dsh-crap-agents/issues"
+  },
+  "bin": {
+    "gauntlet": "kit/gauntlet.mjs"
+  },
+  "files": [
+    "lib",
+    "prompts",
+    "skills",
+    "kit",
+    "scripts/install-kit.mjs",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    },
+    "install": {
+      "preferred": "git",
+      "git": "https://github.com/Iamtianyuyang/dsh-crap-agents.git",
+      "tarball": "https://github.com/Iamtianyuyang/dsh-crap-agents/archive/refs/heads/main.tar.gz",
+      "zip": "https://github.com/Iamtianyuyang/dsh-crap-agents/archive/refs/heads/main.zip"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/schemastery": "~3.18.4",
+    "@deepseek-ai/dsh-agent-preset": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tool-subagent": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-shell-env": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-skill-filesystem": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-store": "0.2.0-rc.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-shell-env": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-settings": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dshTarget": "0.2.0-rc.2",
+  "publishConfig": {
+    "access": "public"
+  }
+}

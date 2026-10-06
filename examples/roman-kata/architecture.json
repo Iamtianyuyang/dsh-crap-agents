@@ -1,0 +1,9 @@
+{
+  "modules": {
+    "domain": { "paths": ["src/domain/**"], "mayDependOn": [] },
+    "app":    { "paths": ["src/app/**"],    "mayDependOn": ["domain"] }
+  },
+  "includeRoots": ["src"],
+  "forbidCycles": true,
+  "strict": true
+}

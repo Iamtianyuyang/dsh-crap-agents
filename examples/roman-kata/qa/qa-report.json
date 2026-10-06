@@ -1,0 +1,60 @@
+{
+  "verdict": "pass",
+  "summary": "按 QA 步骤在真实构建出的 roman 可执行文件上逐条执行，全部符合预期。",
+  "checks": [
+    {
+      "title": "年份转罗马数字",
+      "action": "roman 2026",
+      "expected": "MMXXVI, exit 0",
+      "actual": "MMXXVI, exit 0",
+      "status": "pass",
+      "id": "Q1",
+      "constraint": "C1"
+    },
+    {
+      "title": "罗马数字转年份",
+      "action": "roman MCMXCIV",
+      "expected": "1994, exit 0",
+      "actual": "1994, exit 0",
+      "status": "pass",
+      "id": "Q2",
+      "constraint": "C1"
+    },
+    {
+      "title": "混合参数",
+      "action": "roman 7 XLII",
+      "expected": "VII / 42",
+      "actual": "VII / 42",
+      "status": "pass",
+      "id": "Q3",
+      "constraint": "C1"
+    },
+    {
+      "title": "非规范写法被拒绝",
+      "action": "roman IIII",
+      "expected": "not a valid Roman numeral, exit 2",
+      "actual": "error: 'IIII' is not a valid Roman numeral, exit 2",
+      "status": "pass",
+      "id": "Q4",
+      "constraint": "C2"
+    },
+    {
+      "title": "超范围被拒绝",
+      "action": "roman 4000",
+      "expected": "out of range, exit 2",
+      "actual": "error: 4000 is out of range (1..3999), exit 2",
+      "status": "pass",
+      "id": "Q5",
+      "constraint": "C2"
+    },
+    {
+      "title": "空参数不崩溃",
+      "action": "roman \"\"",
+      "expected": "error, exit 2",
+      "actual": "error: '' is not a valid Roman numeral, exit 2",
+      "status": "pass",
+      "id": "Q6",
+      "constraint": "C2"
+    }
+  ]
+}

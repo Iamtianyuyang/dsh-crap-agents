@@ -1,0 +1,14 @@
+[
+  {
+    "file": "src/app/cli.cpp",
+    "op": "4 -> 5",
+    "source": "arg.size() <= 4",
+    "reason": "该长度保护只为防止 std::stoi 溢出；5 位数同样超出 3999，两条路径都输出 out of range，行为等价。"
+  },
+  {
+    "file": "src/domain/roman.cpp",
+    "op": "0 -> 1",
+    "source": "default: return 0;",
+    "reason": "非法字符被当成 1 时，from_roman 的规范化回写校验 (to_roman(value) != numeral) 仍会拒绝它，行为等价。"
+  }
+]

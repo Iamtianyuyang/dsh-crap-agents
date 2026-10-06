@@ -1,0 +1,7 @@
+{
+  "name": "bowling-js",
+  "private": true,
+  "type": "module",
+  "bin": { "bowling": "bin/bowling.js" },
+  "scripts": { "test": "node --test" }
+}

@@ -1,0 +1,11 @@
+{
+  "verdict": "pass",
+  "summary": "按 QA 步骤在真实程序 bin/bowling.js 上逐条执行，全部符合预期。",
+  "checks": [
+    { "id": "Q1", "title": "完美比赛", "action": "node bin/bowling.js 10 10 10 10 10 10 10 10 10 10 10 10", "expected": "300, exit 0", "actual": "300, exit 0", "status": "pass", "constraint": "C1" },
+    { "id": "Q2", "title": "全部补中", "action": "node bin/bowling.js 9 1 9 1 9 1 9 1 9 1 9 1 9 1 9 1 9 1 9 1 9", "expected": "190, exit 0", "actual": "190, exit 0", "status": "pass", "constraint": "C1" },
+    { "id": "Q3", "title": "比赛没打完", "action": "node bin/bowling.js 3 4", "expected": "比赛还没有打完, exit 2", "actual": "error: 比赛还没有打完, exit 2", "status": "pass", "constraint": "C2" },
+    { "id": "Q4", "title": "非数字", "action": "node bin/bowling.js 7 x", "expected": "不是数字, exit 2", "actual": "error: 不是数字：'x', exit 2", "status": "pass", "constraint": "C2" },
+    { "id": "Q5", "title": "越界瓶数", "action": "node bin/bowling.js 10 11", "expected": "非法的击倒数, exit 2", "actual": "error: 非法的击倒数：11, exit 2", "status": "pass", "constraint": "C2" }
+  ]
+}

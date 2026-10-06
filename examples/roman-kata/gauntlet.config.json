@@ -1,0 +1,33 @@
+{
+  "$comment": "示例项目：cmake-clang 深度分析——仓库里全部 C/C++ 产品代码都被度量（tests/、acceptance/、docs/ 等除外）。",
+  "adapter": "cmake-clang",
+  "sources": [
+    "**/*.c",
+    "**/*.cc",
+    "**/*.cpp",
+    "**/*.cxx",
+    "**/*.cu",
+    "**/*.cuh",
+    "**/*.h",
+    "**/*.hh",
+    "**/*.hpp",
+    "**/*.hxx"
+  ],
+  "thresholds": {
+    "crapMax": 8,
+    "complexityMax": 10,
+    "functionLinesMax": 60,
+    "nestingMax": 4,
+    "paramsMax": 7,
+    "lineCoverageMin": 0.9,
+    "mutationScoreMin": 1,
+    "duplicationMax": 0.03,
+    "warningsMax": 0,
+    "tidyMax": 0,
+    "staticScopeMin": 1
+  },
+  "mutation": {
+    "scope": "all",
+    "maxMutants": 0
+  }
+}
