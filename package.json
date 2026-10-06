@@ -1,6 +1,6 @@
 {
   "name": "dsh-gauntlet",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "DeepSeek Harness 插件：「Gauntlet 小队」Agent 预设——按 Bob 大叔的方法把 agent 关进一层层可度量的闸门：需求 → 验收测试 → TDD → 全量代码质量 → 变异测试 → QA，最后产出一页 5 分钟看完的离线证据包。人不读 AI 写的代码，人读证据。",
   "type": "module",
   "main": "lib/index.js",

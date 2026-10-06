@@ -35,7 +35,8 @@ dsh plugin --profile web add github:Iamtianyuyang/dsh-crap-agents
 
 - **「Gauntlet 小队」模式**：在 Agent 预设的「自定义」分组里。新建任务时选它，主会话 agent 就是 Leader；
   其他模式（标准、PTC……）完全不受影响——小队的技能和工具只存在于这个模式里。
-- **「Gauntlet 小队」设置页**：侧栏「插件」→「已安装」→ dsh-gauntlet，给 7 个阶段分别选模型。
+- **「Gauntlet 小队」设置页**：给 7 个阶段分别选模型。两个入口：Gauntlet 模式下输入框左下角的「阶段模型」按钮（悬浮窗），
+  或侧栏「插件」→「已安装」→ dsh-gauntlet。
 - **环境变量 `DSH_GAUNTLET_KIT_DIR`**：Gauntlet 会话里的每次 shell 调用都能拿到，指向插件自带的零依赖工具本体，
   一行把 `.gauntlet/` 装进目标仓库（离线）。
 
@@ -78,7 +79,8 @@ flowchart LR
 
 ## 每个阶段自己选模型
 
-在 Web 侧栏打开「插件」→「已安装」→ dsh-gauntlet：7 个阶段各一行，选模型和推理强度，保存。
+在 Gauntlet 模式的输入框里点「阶段模型」按钮（只在这个模式下出现），或者打开侧栏「插件」→「已安装」→ dsh-gauntlet：
+7 个阶段各一行，选模型和推理强度，保存。按钮上会显示有几个阶段用了自定义模型。
 
 - 「继承会话默认」→ 用会话本身的模型（Leader 始终用会话模型）。
 - 下拉框里只有当前真正可用的模型；以前保存的模型不再可用时会单独列在「已保存但当前不可用」里，提醒你换掉。
@@ -159,7 +161,7 @@ cordis.patch.yml         bundle patch：只挂插件服务这一行（id: gauntl
 lib/index.js             Cordis 插件入口：声明 preset、每阶段模型配置、DSH_GAUNTLET_KIT_DIR
 lib/preset.js            「Gauntlet 小队」preset 的组成（基于 dsh standard 模式）
 lib/stages.js            7 个阶段子 agent：工具名、技能、persona
-lib/client.js            设置页（浏览器半边）：每个阶段选模型
+lib/client.js            设置页（浏览器半边）：插件页 + 输入框「阶段模型」按钮，每个阶段选模型
 prompts/leader.md        Leader 的编排协议（就是 Leader 的系统提示）
 skills/gauntlet-*/       10 个技能：共同规则 + 每个阶段做什么 + 两个工具链片段（只在这个模式里注册）
 kit/                     Gauntlet 工具本体（零依赖 Node ESM，从上游同步）+ install-kit.mjs
