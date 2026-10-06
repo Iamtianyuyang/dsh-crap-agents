@@ -3,7 +3,8 @@
 # 只挂一行插件服务。它在代码里（lib/preset.js）声明「Gauntlet 小队」Agent preset——
 # 出现在 Agent 预设的「自定义」分组里：Leader（编排者）+ 7 个阶段子 agent（摸底→规格→编码→清理→加固→QA→证据包）。
 #
-# 每个阶段用哪个模型：在 Web 的「插件」→「已安装」→ dsh-gauntlet 页面修改（存在本行 id `gauntlet` 的配置里），
+# 每个阶段用哪个模型：Gauntlet 模式下输入框的「阶段模型」按钮，或「插件」→「已安装」→ dsh-gauntlet 页面
+# （存在本行 id `gauntlet` 的配置里），
 # 改动只影响之后新建的 Gauntlet 会话。也可以直接写进 profile 的 cordis.patch.yml（会替换本行的整份 config）：
 #
 #   - id: gauntlet

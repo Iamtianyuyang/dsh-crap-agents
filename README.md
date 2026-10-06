@@ -27,6 +27,7 @@ dsh plugin --profile web add github:Iamtianyuyang/dsh-crap-agents
 ```
 
 然后重启 `dsh web` 并刷新页面；`dsh plugin --profile web list` 里会出现 `dsh-gauntlet`。
+用桌面版 DeepSeek Harness 的话，把 `--profile web` 换成 `--profile desktop`，装完重启应用。
 本地开发：在仓库目录里 `dsh plugin --profile web add "link:$(pwd)"`，改完刷新即可。
 
 > 需要目标机器有 git、Node 18.17+（dsh 自带的 runtime 已满足），以及项目自己平时构建 / 测试用的工具。
@@ -39,6 +40,11 @@ dsh plugin --profile web add github:Iamtianyuyang/dsh-crap-agents
   或侧栏「插件」→「已安装」→ dsh-gauntlet。
 - **环境变量 `DSH_GAUNTLET_KIT_DIR`**：Gauntlet 会话里的每次 shell 调用都能拿到，指向插件自带的零依赖工具本体，
   一行把 `.gauntlet/` 装进目标仓库（离线）。
+
+<p align="center">
+  <img src="docs/images/preset-gauntlet.png" width="560" alt="设置 → Agent 预设：「Gauntlet 小队」出现在「自定义」分组">
+  <br><sub>设置 → Agent 预设：「Gauntlet 小队」在「自定义」分组里，和内置模式并列</sub>
+</p>
 
 ## 这支小队怎么组成的
 
@@ -81,6 +87,11 @@ flowchart LR
 
 在 Gauntlet 模式的输入框里点「阶段模型」按钮（只在这个模式下出现），或者打开侧栏「插件」→「已安装」→ dsh-gauntlet：
 7 个阶段各一行，选模型和推理强度，保存。按钮上会显示有几个阶段用了自定义模型。
+
+<p align="center">
+  <img src="docs/images/stage-models.png" width="620" alt="「阶段模型」悬浮窗：7 个阶段各选模型和推理强度">
+  <br><sub>「阶段模型」悬浮窗：例如摸底用 Flash，编码 / 加固用 V4-Pro 并调高推理强度，其余继承会话默认</sub>
+</p>
 
 - 「继承会话默认」→ 用会话本身的模型（Leader 始终用会话模型）。
 - 下拉框里只有当前真正可用的模型；以前保存的模型不再可用时会单独列在「已保存但当前不可用」里，提醒你换掉。
