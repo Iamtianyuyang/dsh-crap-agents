@@ -60,22 +60,30 @@ function call(key, output, prompt = '需求：导出 CSV\n返工说明：\n完�
     kind: 'tool-result', callId: id, call: { name: 'gauntlet_' + key, argsRaw: JSON.stringify({ prompt }) }, callTime: time, time: time + 5 * minute,
     content: [{ type: 'text', text: output }], isError: false, subCalls: [] } } };
 }
+// 尽量贴近真实会话：gates 用 · 分隔并带说明词，多次退回，有的派活提示没写返工说明。
+const allGreen = 'spec ✅ · build ✅ · tests ✅ 188/188 · acceptance ✅ 69/69 · crap ✅ · complexity ✅ · lines ✅ · params ✅ · nesting ✅ · dup ✅ · arch ✅';
 const nodes = [
-  call('surveyor', result('PASS', 'doctor ✅ test ✅ profile ✅', '识别为 Node 项目，适配器 commands，开启棘轮（基线 14 项）。')),
-  call('specifier', result('PASS', 'spec ✅ constraints ✅', '写了 6 个验收场景、11 条约束。')),
-  call('coder', result('FAIL', 'spec ✅ build ✅ tests ❌ (23/25)', '两个边界场景未通过，距离连续 3 轮未缩小。')),
-  call('coder', result('PASS', 'spec ✅ build ✅ tests ✅ (25/25)', 'TDD 完成，全部场景通过。'), '需求：导出 CSV\n返工说明：补齐空表和超长字段两个场景\n完成后返回'),
-  call('cleaner', result('PASS', 'tests ✅ crap ✅ complexity ✅ dup ✅', 'max CRAP 12.4 → 5.2。')),
-  call('hardener', result('PASS', 'tests ✅ mutation ✅ (96.4%) coverage ✅', '补 9 个测试，零存活变异体。')),
+  call('surveyor', result('PASS', 'doctor ✅ 全绿 · build ✅ · test ✅ · profile ✅', '识别为 Node 项目，适配器 commands，开启棘轮（基线 14 项）。')),
+  call('specifier', result('PASS', 'spec ✅ (79 scenarios, undefinedSteps=0, ambiguous=0)', '写了 79 个验收场景、11 条约束。')),
+  call('coder', result('FAIL', 'spec ✅ · build ✅ · tests ❌ 181/188 · acceptance ✅ 69/69', '7 个单元测试失败，距离连续 3 轮未缩小。')),
+  call('coder', result('PASS', 'spec ✅ · build ✅ · tests ✅ 188/188 · acceptance ✅ 69/69', 'TDD 完成，全部场景通过。'), '需求：导出 CSV\n- **返工说明**：补齐空表和超长字段两个场景\n完成后返回'),
+  call('cleaner', result('PASS', allGreen, 'max CRAP 12.4 → 5.2。')),
+  call('hardener', result('FAIL', 'tests ✅ · mutation ❌ 91.2% · coverage ✅', '还有 6 个存活变异体，集中在 parser.ts。')),
+  call('hardener', result('PASS', 'tests ✅ 256/256 · mutation ✅ 100% · coverage ✅', '补 9 个测试，零存活变异体。')),
   call('qa', result('FAIL', 'qa ❌ (9/11)', '真实产物上导出列顺序与约束 C-4 不符。')),
-  call('coder', result('PASS', 'spec ✅ build ✅ tests ✅ (27/27)', '修正列顺序并补了回归测试。'), '需求：导出 CSV\n返工说明：QA 发现导出列顺序与约束 C-4 不符，验收测试却是绿的\n完成后返回'),
-  call('cleaner', '', '需求：导出 CSV\n返工说明：编码改动后重新清理\n完成后返回', true),
+  call('qa', result('FAIL', 'qa ❌ (9/11)', '同上，复现稳定。')),
+  call('coder', result('PASS', 'spec ✅ · build ✅ · tests ✅ 190/190 · acceptance ✅ 69/69', '修正列顺序并补了回归测试。'), '需求：导出 CSV\n请修复 QA 报告的问题'),
+  call('cleaner', result('PASS', allGreen, '重新清理通过。'), '需求：导出 CSV\n返工说明：编码改动后重新清理\n完成后返回'),
+  call('hardener', result('FAIL', 'tests ✅ · mutation ✅ · coverage ❌ 71%', 'src/legacy 不在测量范围，覆盖率统计失真。')),
+  call('surveyor', result('PASS', 'doctor ✅ · build ✅ · test ✅ · profile ✅', '把 src/legacy 加进 sources。'), '需求：导出 CSV\n**返工说明**：加固发现 sources 漏了 src/legacy，需要重新摸底\n完成后返回'),
+  call('specifier', result('PASS', 'spec ✅ constraints ✅', '场景不变，补了 2 条约束。')),
+  call('coder', '', '需求：导出 CSV\n返工说明：摸底范围变更后复验\n完成后返回', true),
 ];
 const session = { running: true };
 const progress = client.buildProgress(nodes, session, null);
 const events = client.buildFlowEvents(progress);
 const byKey = Object.fromEntries(progress.stages.map((stage) => [stage.key, stage]));
-const nextStage = byKey.hardener;
+const nextStage = byKey.cleaner;
 
 // 等待确认的场景：摸底 PASS 后停在人类闸门。
 const waitingNodes = [call('surveyor', result('PASS', 'doctor ✅ test ✅ profile ✅', '首次接入：新建 gauntlet.config.json 与架构规则。'))];
@@ -98,16 +106,18 @@ const context = (now, status, next, done) => `
       </div>
       <div class="gx-progress-track"><div class="gx-progress-fill" style="width:${(done / 7 * 100).toFixed(1)}%"></div></div>`;
 
-const overview = shell(context('清理', 'running', '加固', progress.completed), render([
+const overview = shell(context('编码', 'running', '清理', progress.completed), render([
   h(views.AttentionBox, { t, progress, onOpen: noop }),
   h(views.WorkflowDiagram, { t, progress, events, onOpen: noop, nextStage, leaderRunning: true }),
-  h(views.ReworkList, { t, events, onOpen: noop }),
+  h(views.ReworkList, { t, events, onOpen: noop, onOpenLoop: noop }),
 ]));
+const loop = shell(context('编码', 'running', '清理', progress.completed), render(
+  h(views.LoopView, { t, progress, events, onOpen: noop, onBack: noop })));
 const waiting = shell(context('摸底', 'waiting', '规格', 0), render([
   h(views.AttentionBox, { t, progress: waitingProgress, onOpen: noop }),
   h(views.WorkflowDiagram, { t, progress: waitingProgress, events: [], onOpen: noop, nextStage: null, leaderRunning: false }),
 ]));
-const detail = shell(context('清理', 'running', '加固', progress.completed), render(
+const detail = shell(context('编码', 'running', '清理', progress.completed), render(
   h(views.StageDetails, { t, stage: byKey.coder, events, catalog: [], parentSessionId: 'p', openStageSession: noop,
     loadSnapshot: () => new Promise(() => {}), observeActivity: () => ({ dispose: noop }), refresh: 0, onBack: noop })));
 
@@ -135,6 +145,7 @@ ${css}
 </style></head><body>
 <div class="wrap">
   <div class="col"><h1>总览 · 有返工</h1>${overview}</div>
+  <div class="col"><h1>完整过程</h1>${loop}</div>
   <div class="col"><h1>阶段详情 · 编码</h1>${detail}</div>
   <div class="col"><h1>总览 · 等待你确认</h1>${waiting}</div>
 </div>
