@@ -130,7 +130,7 @@ const darkTokens = `
   --dsw-alias-bg-layer-1:#1a1d22; --dsw-alias-bg-layer-2:#23272e; --dsw-alias-border-l2:#30353e; --dsw-alias-border-l3:#3a404b;
   --dsw-alias-brand-primary:#6b8afd; --dsw-alias-interactive-bg-hover:#262b33; --dsw-alias-state-error-primary:#e2756b;`;
 
-const html = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gauntlet preview</title>
+const page = (title, extraCss, body) => `<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
 <style>
 :root{${lightTokens} --dsw-radius-md:8px}
 @media (prefers-color-scheme: dark){:root:not([data-theme=light]){${darkTokens}}}
@@ -141,16 +141,20 @@ body{margin:0;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label
 .col>h1{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary);margin:0}
 .frame{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
 .gx-workflow.frame{height:auto}
+${extraCss}
 ${css}
-</style></head><body>
+</style></head><body>${body}</body></html>`;
+
+fs.mkdirSync('.preview', { recursive: true });
+fs.writeFileSync('.preview/preview.html', page('Gauntlet preview', '', `
 <div class="wrap">
   <div class="col"><h1>总览 · 有返工</h1>${overview}</div>
   <div class="col"><h1>完整过程</h1>${loop}</div>
   <div class="col"><h1>阶段详情 · 编码</h1>${detail}</div>
   <div class="col"><h1>总览 · 等待你确认</h1>${waiting}</div>
-</div>
-</body></html>`;
-
-fs.mkdirSync('.preview', { recursive: true });
-fs.writeFileSync('.preview/preview.html', html);
-console.log('written', html.length);
+</div>`));
+// README 截图用：每页只放一个面板，宽 400（完整过程的线路图按默认的 360 宽绘制）。
+const shot = '#shot{width:400px}body{padding:12px;width:max-content}';
+fs.writeFileSync('.preview/shot-overview.html', page('overview', shot, '<div id="shot">' + overview + '</div>'));
+fs.writeFileSync('.preview/shot-loop.html', page('loop', shot, '<div id="shot">' + loop + '</div>'));
+console.log('written .preview/preview.html, shot-overview.html, shot-loop.html');
