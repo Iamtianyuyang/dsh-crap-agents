@@ -31,7 +31,9 @@ add_executable(unit_tests tests/unit/roman_test.cpp tests/unit/cli_test.cpp)
 target_link_libraries(unit_tests PRIVATE roman_app GTest::gtest_main)
 gtest_discover_tests(unit_tests DISCOVERY_MODE PRE_TEST)
 
-gauntlet_add_acceptance(LINK roman_app)
+gauntlet_add_acceptance(LINK roman_app
+  STEPS_DIR ${CMAKE_SOURCE_DIR}/.gauntlet/acceptance/steps
+  GENERATED_DIR ${CMAKE_SOURCE_DIR}/.gauntlet/acceptance/generated)
 
 # Smoke tests of the real executable: main() must hand over every argument, in order.
 add_test(NAME cli.forwards_all_arguments COMMAND roman 1 MMXXVI 3999)

@@ -11,7 +11,7 @@ description: Gauntlet 第 3 阶段（Cleaner）：在不改变行为的前提下
 顺手把碰过的旧函数改好更好，Reporter 会用 `baseline --tighten` 把改善固定下来。）
 测试就是你的安全网：每做一步重构就跑一次 `test`。
 
-**先看 `gauntlet.config.json` 的 `adapter`**，再读对应适配器技能的「3 清理」一节：
+**先看 `.gauntlet/gauntlet.config.json` 的 `adapter`**，再读对应适配器技能的「3 清理」一节：
 `commands`（或没写）→ gauntlet-adapter-commands；`cmake-clang` → gauntlet-adapter-cmake。
 
 ## 先看全貌
@@ -35,7 +35,7 @@ node .gauntlet/gauntlet.mjs arch      # 架构违规
 | 测量范围 `scope` | 100% 产品文件被分析到 | 见适配器技能；确实是死代码就删掉；做不到就 NEED-HUMAN |
 | 函数质量 `complexity` | CC ≤ 10，长度 ≤ 60 行，嵌套 ≤ 4，参数 ≤ 7 | 提取函数、卫语句、表驱动；参数太多 → 参数对象 |
 | 告警 `warnings` | 0 条 | 修掉，不要用注释 / pragma / 关掉规则来压 |
-| 静态检查 `tidy` | 0 条 | 按提示修；真正的误报才写进 `quality-accepted.json`（见下） |
+| 静态检查 `tidy` | 0 条 | 按提示修；真正的误报才写进 `.gauntlet/quality-accepted.json`（见下） |
 | 重复代码 `duplication` | ≤ 3% | **把重复逻辑合并成一份**，见下文 |
 | CRAP `crap` | ≤ 8 | 降复杂度；覆盖不足交给加固阶段 |
 | 架构 `arch` | 0 违规 | 依赖倒置；改架构规则需要人确认 |
@@ -61,7 +61,7 @@ node .gauntlet/gauntlet.mjs arch      # 架构违规
 6. **消除重复（DRY）**：见上一节；但不要为了 DRY 把不相关的东西硬捏在一起。
 7. **深模块（Ousterhout）**：接口窄、实现深。不要为了降 CC 拆出一堆只被调用一次、名字空洞的 `helper1/helper2`。
 
-## 例外清单（quality-accepted.json）
+## 例外清单（.gauntlet/quality-accepted.json）
 
 只有**无法消除**的问题才能列为例外，每条必须有具体理由，人类会逐条审核（证据包结论会变成"待你确认"）。
 格式（例子见适配器技能）：
@@ -77,6 +77,8 @@ node .gauntlet/gauntlet.mjs arch      # 架构违规
 
 - 每次只做一个重构，然后 `node .gauntlet/gauntlet.mjs test`，保持全绿。
 - 不改验收场景、不删测试、不改公共行为（输出文本、退出码、数值结果都算行为）。
+  例外：本分支新写的、彼此重复的单元测试可以合并成一张表（gauntlet-core 第 8 节）——每组输入都保留成表里的一行、
+  断言一条不少，这不算删测试；分支开始前就有的测试不动。
 - 不提高阈值、不扩大 `exclude`、不改 `sources`。
 - 完成后 `node .gauntlet/gauntlet.mjs gate --profile cleaner` 必须 PASS，再收尾。
 - 在结果 summary 里列出：重构了哪些函数（前后 CC/长度）、合并了哪些重复代码、修了多少告警和 tidy 问题。

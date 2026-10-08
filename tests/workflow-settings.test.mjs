@@ -12,6 +12,9 @@ vm.runInNewContext(readFileSync(new URL('../lib/client.js', import.meta.url), 'u
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const configName = '/workspace/gauntlet.config.json';
 const localName = '/workspace/gauntlet.local.json';
+const homeLocalName = '/workspace/.gauntlet/gauntlet.local.json';
+// an installed kit: the project already has its .gauntlet/ folder (home layout)
+const kit = { '.gauntlet/VERSION': '0.4.0' };
 function memoryFs(initial = {}) {
   const files = new Map(); let next = 0;
   const put = (name, value) => files.set(name, { text: typeof value === 'string' ? value : JSON.stringify(value), version: 'v' + ++next });
@@ -21,7 +24,11 @@ function memoryFs(initial = {}) {
     async resolve(name, { cwd } = {}) { return { targetKey: posix.normalize(name.startsWith('/') ? name : cwd + '/' + name) }; },
     contains(root, target) { return target.targetKey === root.targetKey || target.targetKey.startsWith(root.targetKey + '/'); },
     processPath(target) { return target.targetKey; },
-    async stat(target) { const file = files.get(target.targetKey); return file ? { type: 'file', version: file.version, size: new TextEncoder().encode(file.text).byteLength } : undefined; },
+    async stat(target) {
+      const file = files.get(target.targetKey);
+      if (file) return { type: 'file', version: file.version, size: new TextEncoder().encode(file.text).byteLength };
+      return [...files.keys()].some((name) => name.startsWith(target.targetKey + '/')) ? { type: 'directory', version: null, size: 0 } : undefined;
+    },
     async readBytes(target) { return new TextEncoder().encode(files.get(target.targetKey).text); },
     async writeText(target, text, expected) {
       if (fs.beforeWrite) await fs.beforeWrite();
@@ -79,7 +86,7 @@ test('saving edits only changed thresholds in local while preserving all unrelat
 });
 
 test('missing files load usable defaults and create only the requested local overrides', async () => {
-  const fs = memoryFs();
+  const fs = memoryFs(kit);
   const loaded = await loadHostQualitySettings(fs, '/workspace');
   assert.equal(loaded.status, 'missing');
   assert.deepEqual(loaded.revision, { base: null, local: null });
@@ -87,17 +94,43 @@ test('missing files load usable defaults and create only the requested local ove
   assert.equal(saved.status, 'ready');
   assert.deepEqual(saved.local, { thresholds: { crapMax: 7 } });
   assert.deepEqual(fs.writes[0].expected, { kind: 'createIfAbsent' });
+  assert.equal(fs.writes[0].path, homeLocalName);
   assert.equal(fs.files.has(configName), false);
+  assert.equal(fs.files.has(localName), false);
+});
+
+test('without a .gauntlet/ folder nothing is created until the survey sets the project up', async () => {
+  const fs = memoryFs();
+  const loaded = await loadHostQualitySettings(fs, '/workspace');
+  assert.equal(loaded.status, 'missing');
+  const saved = await saveHostQualitySettings(fs, '/workspace', loaded.revision, { crapMax: 7 });
+  assert.equal(saved.status, 'error');
+  assert.match(saved.error, /.gauntlet/);
+  assert.equal(fs.writes.length, 0);
+});
+
+test('a configuration in .gauntlet/ keeps local overrides next to it and ignores root leftovers', async () => {
+  const fs = memoryFs({ '.gauntlet/gauntlet.config.json': { thresholds: { crapMax: 6 } }, 'gauntlet.local.json': { thresholds: { crapMax: 1 } } });
+  const loaded = await loadHostQualitySettings(fs, '/workspace');
+  assert.equal(loaded.status, 'ready');
+  assert.equal(loaded.values.crapMax, 6);
+  assert.equal(loaded.paths.base, '/workspace/.gauntlet/gauntlet.config.json');
+  const saved = await saveHostQualitySettings(fs, '/workspace', loaded.revision, { crapMax: 5 });
+  assert.equal(saved.values.crapMax, 5);
+  assert.equal(fs.writes[0].path, homeLocalName);
+  const nested = await loadHostQualitySettings(fs, '/workspace/src');
+  assert.equal(nested.code, 'root-required');
+  assert.equal(nested.projectRoot, '/workspace');
 });
 
 test('bad JSON, invalid structures, or invalid effective values are never silently replaced', async () => {
   for (const value of ['{broken', 'null', '[]', { thresholds: null }, { thresholds: [] }, { thresholds: { lineCoverageMin: 80 } }]) {
-    const fs = memoryFs({ 'gauntlet.local.json': value });
-    const before = fs.files.get(localName).text;
+    const fs = memoryFs({ '.gauntlet/gauntlet.local.json': value });
+    const before = fs.files.get(homeLocalName).text;
     assert.equal((await loadHostQualitySettings(fs, '/workspace')).status, 'error');
     const saved = await saveHostQualitySettings(fs, '/workspace', { base: null, local: 'v1' }, { crapMax: 4 });
     assert.equal(saved.status, 'error');
-    assert.equal(fs.files.get(localName).text, before);
+    assert.equal(fs.files.get(homeLocalName).text, before);
     assert.equal(fs.writes.length, 0);
   }
 });
@@ -127,20 +160,20 @@ test('changes to either config after loading reject the old revision without ove
 
 test('the native atomic guard rejects updates and new-file races after the preflight read', async () => {
   for (const initiallyPresent of [false, true]) {
-    const fs = memoryFs(initiallyPresent ? { 'gauntlet.local.json': {} } : {});
+    const fs = memoryFs(initiallyPresent ? { '.gauntlet/gauntlet.local.json': {} } : kit);
     const loaded = await loadHostQualitySettings(fs, '/workspace');
-    fs.beforeWrite = () => fs.put(localName, { external: 'keep' });
+    fs.beforeWrite = () => fs.put(homeLocalName, { external: 'keep' });
     const saved = await saveHostQualitySettings(fs, '/workspace', loaded.revision, { crapMax: 4 });
     assert.equal(saved.code, 'conflict');
     assert.equal(fs.writes.length, 0);
-    assert.deepEqual(JSON.parse(fs.files.get(localName).text), { external: 'keep' });
+    assert.deepEqual(JSON.parse(fs.files.get(homeLocalName).text), { external: 'keep' });
   }
 });
 
 test('a configuration alias outside the session root is rejected before any read or write', async () => {
   const fs = memoryFs();
   const resolve = fs.resolve;
-  fs.resolve = (name, options) => name === 'gauntlet.local.json' ? { targetKey: '/outside/config.json' } : resolve(name, options);
+  fs.resolve = (name, options) => name.endsWith('gauntlet.local.json') ? { targetKey: '/outside/config.json' } : resolve(name, options);
   assert.equal((await loadHostQualitySettings(fs, '/workspace')).code, 'invalid-config');
   assert.equal((await saveHostQualitySettings(fs, '/workspace', { base: null, local: null }, { crapMax: 4 })).status, 'error');
   assert.equal(fs.writes.length, 0);
@@ -160,7 +193,7 @@ test('a parent project config is identified instead of creating overrides the CL
 });
 
 test('browser helpers use the exact slash endpoint and propagate actionable conflicts', async () => {
-  const fs = memoryFs(); const calls = [];
+  const fs = memoryFs(kit); const calls = [];
   const ctx = { connection: { rpc: { async call(route, endpoint, payload, signal) {
     calls.push({ route, endpoint, payload, signal });
     const { revision, changes } = payload.args;
@@ -180,7 +213,7 @@ test('browser helpers use the exact slash endpoint and propagate actionable conf
 });
 
 test('host RPC registration uses workspace lookup parameters and public Remote initializers', async () => {
-  const fs = memoryFs(); const names = [];
+  const fs = memoryFs(kit); const names = [];
   class Service { constructor(ctx, name) { this.ctx = ctx; this.name = name; } }
   function Remote(_method, context) { names.push(context.name); context.addInitializer(function () { this.marked = true; }); }
   const service = registerQualitySettings({ fs }, Service, Remote);

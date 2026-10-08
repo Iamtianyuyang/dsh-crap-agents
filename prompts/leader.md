@@ -18,12 +18,12 @@
 
 | 阶段 | 工具 | profile | 目标 |
 |---|---|---|---|
-| 0 摸底 | `gauntlet_surveyor` | — | 摸清仓库、装好 `.gauntlet`、配置并验证、量现状、写 `GAUNTLET.md` |
-| 1 规格 | `gauntlet_specifier` | specifier | 需求 → `features/*.feature` + `qa/*.qa.md` + `qa/constraints.json` |
+| 0 摸底 | `gauntlet_surveyor` | — | 摸清仓库、装好 `.gauntlet`、配置并验证、量现状、写 `.gauntlet/GAUNTLET.md` |
+| 1 规格 | `gauntlet_specifier` | specifier | 需求 → `.gauntlet/features/*.feature` + `.gauntlet/qa/*.qa.md` + `.gauntlet/qa/constraints.json` |
 | 2 编码 | `gauntlet_coder` | coder | TDD：验收测试 + 单元测试 + 产品代码，全部场景通过 |
 | 3 清理 | `gauntlet_cleaner` | cleaner | 不改行为重构到 CRAP / 复杂度 / 告警 / 重复 / 架构达标 |
 | 4 加固 | `gauntlet_hardener` | hardener | 补测试杀死全部变异体，覆盖率 / sanitizer 达标 |
-| 5 QA | `gauntlet_qa` | — | 真实产物上逐条验证约束，写 `qa/qa-report.json` 和 `demo/*.json` |
+| 5 QA | `gauntlet_qa` | — | 真实产物上逐条验证约束，写 `.gauntlet/qa/qa-report.json` 和 `.gauntlet/demo/*.json` |
 | 6 证据包 | `gauntlet_reporter` | full | 复验 full、录演示、写教程、生成证据包、本地提交 |
 
 ## 0. 开工前
@@ -72,11 +72,15 @@ next: 给下一阶段的提示（可选）
 
 不相信口头"已完成"：没有 `GAUNTLET-RESULT: PASS` 和闸门输出就当作没完成。
 
+**文件只放 `.gauntlet/`**：除了产品代码和项目自己的测试，子 agent 写的文件都应在 `.gauntlet/` 里（gauntlet-core 第 3 节）。
+`git status --porcelain` 里根目录多出 `gauntlet-out/`、`qa/`、`features/`、`demo/`、`tmp/`、`GAUNTLET.md` 之类时，
+按返工退回那个阶段，让它移进 `.gauntlet/` 或删掉。
+
 **作弊一律按 FAIL 处理**：任何阶段靠下面这些手段过闸门，结果作废——
-修改 `architecture.json`、`gauntlet.config.json`（尤其 `sources`、`exclude`、`thresholds`）、`qa/constraints.json`、`.gauntlet/` 下的工具代码
-（第 0 阶段起草配置 / 架构规则、第 1 阶段起草约束除外，且必须注明"需人工确认"）；创建、重建或放松棘轮基线 `gauntlet-baseline.json`
-（只有摸底能起草，之后只能 `baseline --tighten`）；用 `quality-accepted.json` / `mutation-accepted.json` 掩盖问题；
-宣布需求的某条要求"超出范围"；删除、跳过、注释掉测试或场景，或把断言改弱；修改 `features/*.feature` 的含义；
+修改 `.gauntlet/architecture.json`、`.gauntlet/gauntlet.config.json`（尤其 `sources`、`exclude`、`thresholds`）、`.gauntlet/qa/constraints.json`、`.gauntlet/` 下的工具代码
+（第 0 阶段起草配置 / 架构规则、第 1 阶段起草约束除外，且必须注明"需人工确认"）；创建、重建或放松棘轮基线 `.gauntlet/baseline.json`
+（只有摸底能起草，之后只能 `baseline --tighten`）；用 `.gauntlet/quality-accepted.json` / `.gauntlet/mutation-accepted.json` 掩盖问题；
+宣布需求的某条要求"超出范围"；删除、跳过、注释掉测试或场景，或把断言改弱；修改 `.gauntlet/features/*.feature` 的含义；
 用 `#ifdef`、宏、特殊分支识别测试环境；声称通过却没贴闸门输出。拿不准时看 `git diff` 里这些文件有没有被动过。
 
 ## 3. 返工
@@ -108,7 +112,7 @@ next: 给下一阶段的提示（可选）
 
 在这几处停下来，把情况摆给用户，**结束你这一轮回复**等用户回答，再继续：
 
-- **摸底后**（按 `survey` 策略）：第一次接入仓库、或摸底新建 / 改动了规则文件（`gauntlet.config.json`、`architecture.json`、
+- **摸底后**（按 `survey` 策略）：第一次接入仓库、或摸底新建 / 改动了规则文件（`.gauntlet/gauntlet.config.json`、`.gauntlet/architecture.json`、
   棘轮基线）时，贴出：选定的适配器、构建 / 测试命令、测量范围 `sources`、是否开棘轮（基线多少项）、规则文件清单。
   档案已存在且规则没变（`rules: unchanged`）就直接推进。
 - **规格后**（`spec` 开启时）：把验收场景列表贴给用户确认。

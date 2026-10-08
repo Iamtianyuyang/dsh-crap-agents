@@ -1,2 +1,4 @@
-gauntlet-out/
-gauntlet.local.json
+.gauntlet/out/
+.gauntlet/build*/
+.gauntlet/tmp/
+.gauntlet/gauntlet.local.json

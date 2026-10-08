@@ -1,13 +1,13 @@
 ---
 name: gauntlet-survey
-description: Gauntlet 第 0 阶段（Surveyor）：在规格之前摸清目标仓库——语言、构建和测试命令、CI、现有质量工具、目录与模块、约定和坑；安装 .gauntlet、选适配器、填好并验证 gauntlet.config.json、决定是否开棘轮模式，并把结论写成项目档案 GAUNTLET.md，供本需求和以后所有需求复用。
+description: Gauntlet 第 0 阶段（Surveyor）：在规格之前摸清目标仓库——语言、构建和测试命令、CI、现有质量工具、目录与模块、约定和坑；安装 .gauntlet、选适配器、填好并验证 .gauntlet/gauntlet.config.json、决定是否开棘轮模式，并把结论写成项目档案 GAUNTLET.md，供本需求和以后所有需求复用。
 ---
 
 # 摸底阶段（Surveyor）
 
 后面每个阶段的 agent 都是全新启动的，对这个仓库一无所知。你的工作是**只做一次**的项目调研：
 把"这个仓库怎么构建、怎么测试、代码在哪、有什么规矩、有什么坑"查清楚、**实际跑通**，
-写进仓库根目录的 `GAUNTLET.md`（项目档案）。以后的需求直接复用它，只在仓库变了时刷新。
+写进项目档案 `.gauntlet/GAUNTLET.md`。以后的需求直接复用它，只在仓库变了时刷新。
 
 你**不改产品代码和测试**，也不写验收场景（那是第 1 阶段的事）。
 
@@ -25,10 +25,27 @@ description: Gauntlet 第 0 阶段（Surveyor）：在规格之前摸清目标�
    - `UP-TO-DATE`：档案存在、配置存在，之后没有构建 / CI / 质量配置变化 → 走「快速复核」。
    - `REFRESH`：档案过期（survey.md 列出了变化的文件）或缺配置 → 只更新受影响的部分，再走「快速复核」。
    - `FULL`：没有档案 → 走「完整摸底」。
+3. 仓库根目录有 `gauntlet.config.json`（老布局，文件散在根目录）：先按下面「迁进 .gauntlet/」做完，再重新 `survey`。
+
+### 迁进 .gauntlet/（只对老布局的仓库做一次）
+
+目标：Gauntlet 的文件全部收进 `.gauntlet/`（gauntlet-core 第 3 节「文件放哪里」），根目录不再留任何 Gauntlet 文件。
+
+1. 用 `git mv` 把存在的这些移过去：`gauntlet.config.json`、`GAUNTLET.md`、`architecture.json`、`quality-accepted.json`、
+   `mutation-accepted.json`、`qa/`、`features/`、`demo/`、`acceptance/steps/` → `.gauntlet/` 下同名位置；
+   `gauntlet-baseline.json` → `.gauntlet/baseline.json`；证据包阶段写的教程 `docs/<主题>.md` 和 `docs/architecture/` → `.gauntlet/docs/`
+   （项目自己的文档不动）。`gauntlet.local.json`（不提交）直接移到 `.gauntlet/gauntlet.local.json`。
+2. 改 `.gauntlet/gauntlet.config.json`：删掉还指向老位置的 `outDir`、`buildDir`、`features`、`stepsDir`、`generatedDir`、`paths`、
+   `ratchet.baseline`（删掉后默认就是 `.gauntlet/` 里的位置）；`commands` 里写死的 `gauntlet-out/…` 换成 `{out}/…`。
+   **只改位置，`sources`、`exclude`、`thresholds` 一个字都不动。**
+3. 演示脚本的 `"cwd": ".."` 改成 `"../.."`；cmake-clang 按 `init` 打印的那行更新 CMakeLists.txt 里的 `gauntlet_add_acceptance(...)`。
+4. 删掉 `.gitignore` 里 `# gauntlet` 下的老条目，运行 `node .gauntlet/gauntlet.mjs init`（已有配置会保留，只补上新的忽略规则），
+   再删掉根目录残留的 `gauntlet-out/`、`build-gauntlet*/`（都是生成的）。
+5. `node .gauntlet/gauntlet.mjs test` 跑通后和档案一起提交（`[survey] move gauntlet files into .gauntlet/`），结果写 `rules: changed`。
 
 ### 快速复核（档案仍然有效）
 
-1. 读 `GAUNTLET.md`，运行 `node .gauntlet/gauntlet.mjs doctor`（必须全绿）和 `node .gauntlet/gauntlet.mjs test`（必须能跑完并产出报告）。
+1. 读 `.gauntlet/GAUNTLET.md`，运行 `node .gauntlet/gauntlet.mjs doctor`（必须全绿）和 `node .gauntlet/gauntlet.mjs test`（必须能跑完并产出报告）。
 2. 都正常：只把档案里的 `commit:` 更新为当前 commit（以及确实变了的事实），提交；结果写 `rules: unchanged`。
 3. 跑不通：说明档案已经不对，改走「完整摸底」。
 
@@ -50,10 +67,10 @@ description: Gauntlet 第 0 阶段（Surveyor）：在规格之前摸清目标�
    ```
 5. **量现状**：`node .gauntlet/gauntlet.mjs gate --profile quality`（不需要场景，只量质量闸门：scope、complexity、warnings、tidy、
    duplication、crap、arch、coverage）。旧代码本身就过不了、而本次需求不是"清理旧代码"时：
-   在 `gauntlet.config.json` 设 `"ratchet": { "enabled": true }`，运行 `node .gauntlet/gauntlet.mjs baseline` 记录现有欠账。
+   在 `.gauntlet/gauntlet.config.json` 设 `"ratchet": { "enabled": true }`，运行 `node .gauntlet/gauntlet.mjs baseline` 记录现有欠账。
    需求本身就是重构 / 清理时不开棘轮。
-6. **写档案** `GAUNTLET.md`（模板见下）。`base:` 必须写：survey.md 的「分支基线」给出了它；显示"找不到"时问清楚默认分支再写，
-   否则棘轮模式的"改动行"无从计算（闸门会报错），提交 `GAUNTLET.md`、`gauntlet.config.json`、架构规则、`gauntlet-baseline.json`（如有）。
+6. **写档案** `.gauntlet/GAUNTLET.md`（模板见下）。`base:` 必须写：survey.md 的「分支基线」给出了它；显示"找不到"时问清楚默认分支再写，
+   否则棘轮模式的"改动行"无从计算（闸门会报错），提交 `.gauntlet/GAUNTLET.md`、`.gauntlet/gauntlet.config.json`、架构规则、`.gauntlet/baseline.json`（如有）。
    结果里写 `rules: created`（第一次）或 `rules: changed`（改了配置 / 架构规则 / 基线），并写"规则文件草稿：需人工确认"。
 
 ## GAUNTLET.md 模板
@@ -95,8 +112,8 @@ commit: `<写档案时的 commit 短哈希>`　base: `<默认分支>`　更新�
 ## 规则
 
 - 档案里每条命令都必须是你实际跑通过的；推测的内容标明"未验证"。
-- 不写密钥、令牌、密码的值；不提交本机路径相关的配置（那些写进 `gauntlet.local.json`）。
+- 不写密钥、令牌、密码的值；不提交本机路径相关的配置（那些写进 `.gauntlet/gauntlet.local.json`）。
 - `sources` 宁多勿少：漏掉的产品代码不会被度量。不确定是不是产品代码时，写进档案并 NEED-HUMAN 问人。
-- 已经存在的 `gauntlet.config.json`、架构规则、基线：只能在档案过期且确有必要时改，每处改动在结果里逐条列出（`rules: changed`）；
+- 已经存在的 `.gauntlet/gauntlet.config.json`、架构规则、基线：只能在档案过期且确有必要时改，每处改动在结果里逐条列出（`rules: changed`）；
   放松阈值、收窄 `sources`、放松基线永远不允许（gauntlet-core 第 5 节）。
 - 收尾按 gauntlet-core 第 6 节；小结比普通阶段多一行 `rules: created | changed | unchanged`，Leader 据此决定要不要请用户确认。

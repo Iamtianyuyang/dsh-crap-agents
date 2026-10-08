@@ -12,7 +12,7 @@
 // fixed-size charts, sticky zebra tables, insights list, collapsible methodology, no invented data).
 import fs from 'node:fs';
 import path from 'node:path';
-import { readJson, ensureDir, run, gitChangedLines, relToRoot, pathOf } from './util.mjs';
+import { readJson, ensureDir, run, gitChangedLines, relToRoot, pathOf, isKitFile } from './util.mjs';
 import { irOf } from './gen.mjs';
 import { parseFeatureDir } from './gherkin.mjs';
 import { constraintsGate } from './checks.mjs';
@@ -27,7 +27,7 @@ export { markdown };
 const readJsonSafe = (dir, rel) => { try { return readJson(path.resolve(dir, rel), null); } catch { return null; } };
 
 // Files that define the rules of the game. Agents must not change them without a human noticing.
-const governanceFiles = (cfg) => ['gauntlet.config.json', cfg.paths.architecture, cfg.paths.mutationAccepted, cfg.paths.qualityAccepted, `${cfg.paths.qa}/constraints.json`].map((p) => relToRoot(cfg, cfg.abs(p)));
+const governanceFiles = (cfg) => [cfg.configFile, cfg.paths.architecture, cfg.paths.mutationAccepted, cfg.paths.qualityAccepted, `${cfg.paths.qa}/constraints.json`].map((p) => relToRoot(cfg, cfg.abs(p)));
 
 export function collect(cfg, opts = {}) {
   const o = (f) => cfg.out(f);
@@ -73,8 +73,8 @@ export function collect(cfg, opts = {}) {
     evDir,
     changes,
     ratchet: ratchetOn(cfg) ? ratchetModel(cfg, changes) : null,
-    configDiff: changes?.governance.some((f) => f.file === 'gauntlet.config.json')
-      ? run('git', ['diff', changes.base, '--', 'gauntlet.config.json'], { cwd: cfg.root, quiet: true, allowFail: true }).stdout : '',
+    configDiff: changes?.governance.some((f) => f.file === cfg.configFile)
+      ? run('git', ['diff', changes.base, '--', cfg.configFile], { cwd: cfg.root, quiet: true, allowFail: true }).stdout : '',
   };
 }
 
@@ -107,8 +107,8 @@ function changesByModule(cfg) {
     const n = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8').split('\n').length : 0;
     rows.push({ file: f, added: n, deleted: 0, untracked: true });
   }
-  // the vendored kit (.gauntlet/) is tooling, not rules: leave it out so real rule changes stand out
-  const files = rows.filter((r) => !r.file.startsWith('..') && !r.file.startsWith(cfg.outDir) && !r.file.startsWith('.gauntlet/'));
+  // the vendored kit (.gauntlet/ tooling) is not rules: leave it out so real rule changes stand out
+  const files = rows.filter((r) => !r.file.startsWith('..') && !r.file.startsWith(cfg.outDir) && !isKitFile(r.file));
   if (!files.length) return null;
   const rules = governanceFiles(cfg);
   const governance = files.filter((f) => rules.includes(f.file));
@@ -177,7 +177,7 @@ function model(cfg, d, title) {
     if (rc) add('coverage', '改动行覆盖率（棘轮）', rc.pass, `改动的 ${rc.changedLines} 行可执行代码覆盖 ${pct(rc.diffCoverage)}${rc.regressions.length ? `，${rc.regressions.length} 个文件低于基线` : ''}`);
     else add('coverage', '行覆盖率', d.crap.summary.lineCoverage >= th.lineCoverageMin, pct(d.crap.summary.lineCoverage));
   }
-  if (d.mutation) add('mutation', '变异测试', d.mutation.pass, `得分 ${pct(d.mutation.summary.score)}，${d.mutation.summary.total} 个变异体，存活 ${d.mutation.summary.survived + d.mutation.summary.noCoverage}${d.mutation.summary.unsupported ? `，${d.mutation.summary.unsupported} 个文件没法变异` : ''}`);
+  if (d.mutation) add('mutation', '变异测试', d.mutation.pass, `得分 ${pct(d.mutation.summary.score)}，${d.mutation.summary.total} 个变异体，存活 ${d.mutation.summary.survived + d.mutation.summary.noCoverage}${d.mutation.summary.unsupported ? `，${d.mutation.summary.unsupported} 个文件没法变异` : ''}${d.mutation.summary.cached ? `，其中 ${d.mutation.summary.cached} 个沿用了上次的结果（函数没改；用 gate --profile full 全部重测）` : ''}`);
   if (d.arch && !d.arch.skipped) add('arch', '架构边界', d.arch.pass, `${d.arch.edges.length} 条依赖，违规 ${d.arch.violations.length}`);
   if (d.qa) add('qa', 'QA 端到端', d.qa.verdict === 'pass' && qaChecks.every((c) => c.status === 'pass'), `${qaChecks.filter((c) => c.status === 'pass').length}/${qaChecks.length} 通过`);
   add('constraints', '需求约束', !!d.constraints?.pass, d.constraints ? `${d.constraints.met}/${d.constraints.total} 条已证实` : '没有 qa/constraints.json');

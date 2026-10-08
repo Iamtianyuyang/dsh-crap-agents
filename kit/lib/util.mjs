@@ -60,7 +60,8 @@ const DEFAULT_CONFIG = {
   // scope 'all' mutates every production line (slow, thorough); 'changed' only lines changed vs base
   // (base 'auto' = the top-level `base`).
   // maxMutants 0 = unlimited.
-  mutation: { scope: 'all', base: 'auto', maxMutants: 0, timeoutFactor: 3, minTimeoutSec: 10 },
+  // cache: reuse KILLED results of unchanged functions (outside gate --profile full; --fresh re-tests all)
+  mutation: { scope: 'all', base: 'auto', maxMutants: 0, timeoutFactor: 3, minTimeoutSec: 10, cache: true },
   llvm: { profdata: 'llvm-profdata', cov: 'llvm-cov', cxxfilt: 'llvm-cxxfilt', clang: 'clang', tidy: 'clang-tidy' },
   // second static analyzer (cmake-clang): 'auto' = run when installed, true = required, false = off
   cppcheck: { mode: 'auto', exe: 'cppcheck', enable: 'warning,performance,portability' },
@@ -92,11 +93,43 @@ export function writeJson(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
 }
 
-/** gauntlet.config.json (committed) merged with gauntlet.local.json (machine-specific, gitignored). */
+// Home layout: everything Gauntlet writes into a project lives in .gauntlet/, next to the kit — config,
+// profile, rules, hand-offs, scenarios, and the gitignored build / output. It is chosen by where the
+// config is: .gauntlet/gauntlet.config.json = home layout, gauntlet.config.json at the root = classic layout;
+// before any config exists, GAUNTLET_LAYOUT=home picks the home layout (the default is classic).
+export const HOME = '.gauntlet';
+export const HOME_DEFAULTS = {
+  paths: { qa: `${HOME}/qa`, architecture: `${HOME}/architecture.json`, qualityAccepted: `${HOME}/quality-accepted.json`, mutationAccepted: `${HOME}/mutation-accepted.json`, profile: `${HOME}/GAUNTLET.md` },
+  buildDir: `${HOME}/build`,
+  outDir: `${HOME}/out`,
+  features: `${HOME}/features`,
+  stepsDir: `${HOME}/acceptance/steps`,
+  generatedDir: `${HOME}/acceptance/generated`,
+  ratchet: { baseline: `${HOME}/baseline.json` },
+};
+// the kit's own files inside .gauntlet/ (tooling, not project data)
+const KIT_ENTRIES = /^\.gauntlet\/(gauntlet\.mjs|VERSION|lib\/|cmake\/|templates\/|runtime\/)/;
+export const isKitFile = (rel) => KIT_ENTRIES.test(rel);
+
+/** The config file of a project: .gauntlet/gauntlet.config.json (home layout) or gauntlet.config.json. */
+export function configFile(root) {
+  const home = path.join(root, HOME, 'gauntlet.config.json');
+  const classic = path.join(root, 'gauntlet.config.json');
+  if (fs.existsSync(home)) return home;
+  if (fs.existsSync(classic)) return classic;
+  return process.env.GAUNTLET_LAYOUT === 'home' ? home : classic;
+}
+
+/** gauntlet.config.json (committed) merged with gauntlet.local.json (machine-specific, gitignored) next to it. */
 export function loadConfig(root) {
-  let cfg = deepMerge(DEFAULT_CONFIG, readJson(path.join(root, 'gauntlet.config.json'), {}));
-  cfg = deepMerge(cfg, readJson(path.join(root, 'gauntlet.local.json'), {}));
+  const file = configFile(root);
+  const home = path.dirname(file) !== path.resolve(root);
+  let cfg = deepMerge(DEFAULT_CONFIG, home ? HOME_DEFAULTS : {});
+  cfg = deepMerge(cfg, readJson(file, {}));
+  cfg = deepMerge(cfg, readJson(path.join(path.dirname(file), 'gauntlet.local.json'), {}));
   cfg.root = root;
+  cfg.home = home;
+  cfg.configFile = toPosix(path.relative(root, file));
   cfg.abs = (p) => path.resolve(root, p);
   cfg.out = (...p) => path.resolve(root, cfg.outDir, ...p);
   return cfg;
@@ -105,7 +138,7 @@ export function loadConfig(root) {
 export function findRoot(start = process.cwd()) {
   let dir = path.resolve(start);
   for (;;) {
-    if (fs.existsSync(path.join(dir, 'gauntlet.config.json'))) return dir;
+    if (fs.existsSync(path.join(dir, HOME, 'gauntlet.config.json')) || fs.existsSync(path.join(dir, 'gauntlet.config.json'))) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return path.resolve(start);
     dir = parent;

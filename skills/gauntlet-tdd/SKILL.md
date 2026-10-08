@@ -8,7 +8,7 @@ description: Gauntlet 第 2 阶段（Coder）：用 TDD 实现功能——验收
 目标只有一个：**让所有验收场景和单元测试变绿**。代码干不干净是下一阶段的事，
 但不要故意写乱——小函数、好名字是免费的。
 
-**先看 `gauntlet.config.json` 的 `adapter`**，再读对应适配器技能的「2 编码」一节：
+**先看 `.gauntlet/gauntlet.config.json` 的 `adapter`**，再读对应适配器技能的「2 编码」一节：
 `commands`（或没写）→ gauntlet-adapter-commands；`cmake-clang` → gauntlet-adapter-cmake。
 那里写着验收测试怎么写、用什么单元测试框架、新项目的工程骨架。
 
@@ -40,3 +40,5 @@ description: Gauntlet 第 2 阶段（Coder）：用 TDD 实现功能——验收
   入口文件能否从 `sources` 里排除只能由**人类**决定，你不能自己改 `sources` / `exclude`。
 - 不要为了让测试通过而在产品代码里判断"是否在测试中"。
 - 场景措辞是需求：步骤 / 测试名与场景逐字对应，不要改场景去迁就代码。
+- 单元测试写成表驱动（gauntlet-core 第 8 节）：同一个函数的多组输入输出是一张表 + 一个测试；
+  TDD 的"再红"往往就是往表里加一行，而不是再写一个测试函数。

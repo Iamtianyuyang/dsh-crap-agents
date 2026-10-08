@@ -1,6 +1,6 @@
 ---
 name: gauntlet-qa
-description: Gauntlet 第 5 阶段（QA）：按 qa/*.qa.md 在真实构建产物上逐条执行检查，记录确定性的 pass/fail 报告 qa/qa-report.json（提交到分支），并编写可回放的演示脚本 demo/*.json。
+description: Gauntlet 第 5 阶段（QA）：按 .gauntlet/qa/*.qa.md 在真实构建产物上逐条执行检查，记录确定性的 pass/fail 报告 .gauntlet/qa/qa-report.json（提交到分支），并编写可回放的演示脚本 .gauntlet/demo/*.json。
 ---
 
 # QA 阶段
@@ -12,14 +12,14 @@ description: Gauntlet 第 5 阶段（QA）：按 qa/*.qa.md 在真实构建产�
 
 1. 读任务、切分支（gauntlet-core）。
 2. 构建：`node .gauntlet/gauntlet.mjs test`。真实产物在哪、怎么运行见适配器技能「5 QA」一节。
-3. 打开 `qa/*.qa.md`，**逐条真实执行**，把实际结果原样记下来。
-4. **逐条证实 `qa/constraints.json` 里的需求约束**（见下文）。每条约束至少一条检查，检查里写 `"constraint": "C1"`。
-5. 需要与原程序等价时（`gauntlet.config.json` 里 `requireEquivalence: true`，或 QA 文档写了对比计划），
-   做黄金样本对比（见下文），结果记录在 `qa/equivalence.json`。
-6. 写 `qa/qa-report.json`（格式见下，**提交到分支**——下一阶段在另一个工作区运行，只能拿到提交过的文件）。
+3. 打开 `.gauntlet/qa/*.qa.md`，**逐条真实执行**，把实际结果原样记下来。
+4. **逐条证实 `.gauntlet/qa/constraints.json` 里的需求约束**（见下文）。每条约束至少一条检查，检查里写 `"constraint": "C1"`。
+5. 需要与原程序等价时（`.gauntlet/gauntlet.config.json` 里 `requireEquivalence: true`，或 QA 文档写了对比计划），
+   做黄金样本对比（见下文），结果记录在 `.gauntlet/qa/equivalence.json`。
+6. 写 `.gauntlet/qa/qa-report.json`（格式见下，**提交到分支**——下一阶段在另一个工作区运行，只能拿到提交过的文件）。
    只要有一条不符合期望，`verdict` 就是 `fail`。
-7. 写演示脚本 `demo/<主题>.json`（会被提交到仓库，证据包阶段用它录制演示），并试跑：
-   `node .gauntlet/gauntlet.mjs demo demo/<主题>.json`
+7. 写演示脚本 `.gauntlet/demo/<主题>.json`（会被提交到仓库，证据包阶段用它录制演示），并试跑：
+   `node .gauntlet/gauntlet.mjs demo .gauntlet/demo/<主题>.json`
 8. 收尾（gauntlet-core 第 6 节）：
    - 全部通过 → PASS
    - 有失败 → FAIL，summary 写清哪几条不符合、实际看到了什么，Leader 会安排回到编码阶段返工
@@ -52,27 +52,27 @@ description: Gauntlet 第 5 阶段（QA）：按 qa/*.qa.md 在真实构建产�
 ## 与原程序等价（黄金样本对比）
 
 1. 在工作目录里取出基线版本并构建，例如：
-   `git worktree add tmp/baseline <基线commit>`，然后按原项目的方式在 `tmp/baseline` 里构建原程序。
-2. 用同一份输入，分别运行原程序和新程序，每个用例输出到 `tmp/equiv/<用例>/{old,new}/`。
+   `git worktree add .gauntlet/tmp/baseline <基线commit>`，然后按原项目的方式在 `.gauntlet/tmp/baseline` 里构建原程序。
+2. 用同一份输入，分别运行原程序和新程序，每个用例输出到 `.gauntlet/tmp/equiv/<用例>/{old,new}/`。
    用例矩阵按 QA 文档：每个方法 × 每个后端 × 至少两种规模。
 3. 对每一个输出文件比较并记录：
    ```
-   node .gauntlet/gauntlet.mjs compare tmp/equiv/stencil-cpu/old/snap.bin tmp/equiv/stencil-cpu/new/snap.bin --dtype f32 --header 0 --frame 2097152 --tol 1e-6 --name "stencil · cpu · 128³ · snapshot" --record qa/equivalence.json
+   node .gauntlet/gauntlet.mjs compare .gauntlet/tmp/equiv/stencil-cpu/old/snap.bin .gauntlet/tmp/equiv/stencil-cpu/new/snap.bin --dtype f32 --header 0 --frame 2097152 --tol 1e-6 --name "stencil · cpu · 128³ · snapshot" --record .gauntlet/qa/equivalence.json
    ```
    能逐位一致的用 `--exact`。NaN/Inf 位置不一致一律判失败。
    **文本输出**（日志、CSV、JSON、打印的表格……）用 `--text`：逐行比较，文字必须一致（忽略空白），
    每个数字按数值比较（默认必须相等，`1.0` 和 `1.00`、`1.0D+00` 算相等；需要容差时写 `--tol <相对误差>` / `--atol <绝对误差>` 并说明理由）：
    ```
-   node .gauntlet/gauntlet.mjs compare tmp/equiv/case1/old/out.csv tmp/equiv/case1/new/out.csv --text --name "case1 · 输出表" --record qa/equivalence.json
+   node .gauntlet/gauntlet.mjs compare .gauntlet/tmp/equiv/case1/old/out.csv .gauntlet/tmp/equiv/case1/new/out.csv --text --name "case1 · 输出表" --record .gauntlet/qa/equivalence.json
    ```
-4. `qa/equivalence.json` 提交到分支；证据包会把每一项画成表格和误差柱状图。
+4. `.gauntlet/qa/equivalence.json` 提交到分支；证据包会把每一项画成表格和误差柱状图。
 
-## 演示脚本格式（demo/<主题>.json）
+## 演示脚本格式（.gauntlet/demo/<主题>.json）
 
 ```json
 {
   "title": "roman：阿拉伯数字 ⇄ 罗马数字",
-  "cwd": "..",
+  "cwd": "../..",
   "steps": [
     { "say": "把今年转成罗马数字" },
     { "run": "roman 2026" },
@@ -82,7 +82,7 @@ description: Gauntlet 第 5 阶段（QA）：按 qa/*.qa.md 在真实构建产�
 }
 ```
 
-- `cwd` 相对于脚本文件所在目录（脚本放在 `demo/`，所以 `".."` 就是仓库根目录）。
+- `cwd` 相对于脚本文件所在目录（脚本放在 `.gauntlet/demo/`，所以 `"../.."` 就是仓库根目录）。
 - 命令在 POSIX shell 里执行（Windows 上自动用 Git Bash），路径用 `/`。
 - 演示要讲一个**用户故事**：先展示最常用的用法，再展示一个错误处理。3~6 条命令足够。
 
@@ -90,4 +90,4 @@ description: Gauntlet 第 5 阶段（QA）：按 qa/*.qa.md 在真实构建产�
 
 如果交付物是图形界面或服务：
 - 能用命令行驱动的部分（`--help`、无头模式、HTTP 接口用 `curl`）仍写进 demo 脚本；
-- 能截图就截图，把 PNG 放进 `qa/media/` 并提交（证据包会自动嵌入），在 qa.json 的 check 里写上文件名。
+- 能截图就截图，把 PNG 放进 `.gauntlet/qa/media/` 并提交（证据包会自动嵌入），在 qa.json 的 check 里写上文件名。

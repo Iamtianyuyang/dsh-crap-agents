@@ -53,11 +53,11 @@ test('reports honor local custom paths and retain every missing report envelope'
 });
 
 test('missing configuration uses kit report locations while invalid configuration never guesses locations', async () => {
-  const missing = workspace({ 'gauntlet-out/tests.json': { total: 1 } });
+  const missing = workspace({ '.gauntlet/out/tests.json': { total: 1 } });
   const reports = plain(await client.loadWorkflowReports(missing.ctx, 'session'));
   assert.equal(reports.config.status, 'missing');
   assert.equal(reports.tests.status, 'ready');
-  assert.equal(reports.qa.path, 'qa/qa-report.json');
+  assert.equal(reports.qa.path, '.gauntlet/qa/qa-report.json');
   assert.equal(reports.loop.status, 'missing');
   for (const config of ['{ invalid json', 'null', '[]', '{"outDir":null}', '{"paths":null}', '{"paths":{"qa":""}}']) {
     const invalid = workspace({ 'gauntlet.config.json': config, 'gauntlet-out/tests.json': { total: 999 } });
@@ -68,11 +68,26 @@ test('missing configuration uses kit report locations while invalid configuratio
   }
 });
 
+test('a configuration in .gauntlet/ wins over root files and keeps reports inside .gauntlet/', async () => {
+  const { ctx } = workspace({
+    '.gauntlet/gauntlet.config.json': { thresholds: { crapMax: 8 } },
+    '.gauntlet/gauntlet.local.json': { thresholds: { crapMax: 5 } },
+    'gauntlet.local.json': { outDir: 'stray', thresholds: { crapMax: 1 } },
+    '.gauntlet/out/crap.json': { functions: [] },
+  });
+  const reports = plain(await client.loadWorkflowReports(ctx, 'session'));
+  assert.equal(reports.config.path, '.gauntlet/gauntlet.config.json');
+  assert.equal(reports.config.value.thresholds.crapMax, 5);
+  assert.equal(reports.crap.path, '.gauntlet/out/crap.json');
+  assert.equal(reports.crap.status, 'ready');
+  assert.equal(reports.qa.path, '.gauntlet/qa/qa-report.json');
+});
+
 test('read errors and incomplete bytes remain distinct from missing reports', async () => {
   const { ctx } = workspace({}, {
-    'gauntlet-out/static.json': { ok: false, error: { code: 'EACCES', message: 'Permission denied' } },
-    'gauntlet-out/crap.json': { ok: true, value: { data: new TextEncoder().encode('{"summary":{}}'), eof: false } },
-    'gauntlet-out/tests.json': { ok: true, value: { data: new TextEncoder().encode('invalid json'), eof: true } },
+    '.gauntlet/out/static.json': { ok: false, error: { code: 'EACCES', message: 'Permission denied' } },
+    '.gauntlet/out/crap.json': { ok: true, value: { data: new TextEncoder().encode('{"summary":{}}'), eof: false } },
+    '.gauntlet/out/tests.json': { ok: true, value: { data: new TextEncoder().encode('invalid json'), eof: true } },
   });
   const reports = plain(await client.loadWorkflowReports(ctx, 'session'));
   assert.equal(reports.static.status, 'error');
@@ -88,7 +103,7 @@ test('malformed machine configuration and cancelled requests remain explicit err
   const badResult = plain(await client.loadWorkflowReports(bad.ctx, 'session'));
   assert.equal(badResult.local.status, 'error');
   assert.equal(badResult.gate.status, 'error');
-  assert.equal(bad.calls.length, 2);
+  assert.equal(bad.calls.length, 4);
   const cancelled = workspace();
   const controller = new AbortController();
   controller.abort();
@@ -100,16 +115,21 @@ test('malformed machine configuration and cancelled requests remain explicit err
 
 test('completion snapshots require the exact call and parent identity', async () => {
   const callId = '..';
-  const path = 'gauntlet-out/workflow/%2E%2E/reports.json';
+  const path = '.gauntlet/out/workflow/%2E%2E/reports.json';
   const snapshot = { version: 1, callId, parentSessionId: 'parent', childSessionId: 'child', reports: { tests: { status: 'ready', value: {} } } };
   const source = workspace({ [path]: snapshot });
   const value = plain(await client.loadStageSnapshot(source.ctx, 'parent', callId));
   assert.equal(value.status, 'ready');
   assert.equal(value.path, path);
-  assert.equal(source.calls[0].path, path);
+  assert.deepEqual(source.calls.map((call) => call.path), [path]);
+  // classic layout: the snapshot directory at the project root is the fallback
+  const classicPath = 'gauntlet-out/workflow/%2E%2E/reports.json';
+  const classic = workspace({ [classicPath]: snapshot });
+  assert.equal(plain(await client.loadStageSnapshot(classic.ctx, 'parent', callId)).path, classicPath);
+  assert.deepEqual(classic.calls.map((call) => call.path), [path, classicPath]);
   const wrongParent = plain(await client.loadStageSnapshot(source.ctx, 'other-parent', callId));
   assert.equal(wrongParent.status, 'error');
-  const wrongCall = workspace({ 'gauntlet-out/workflow/wanted/reports.json': snapshot });
+  const wrongCall = workspace({ '.gauntlet/out/workflow/wanted/reports.json': snapshot });
   assert.equal((await client.loadStageSnapshot(wrongCall.ctx, 'parent', 'wanted')).status, 'error');
   assert.equal((await client.loadStageSnapshot(source.ctx, 'parent', '')).status, 'error');
 });

@@ -5,7 +5,7 @@
 // RUN the commands to confirm them. Output: <outDir>/survey.json and survey.md.
 import fs from 'node:fs';
 import path from 'node:path';
-import { run, which, toPosix, writeJson, pathOf, resolveBase } from './util.mjs';
+import { run, which, toPosix, writeJson, pathOf, resolveBase, configFile, isKitFile } from './util.mjs';
 
 const LANG = {
   c: 'C', h: 'C/C++ header', cc: 'C++', cpp: 'C++', cxx: 'C++', hh: 'C++', hpp: 'C++', hxx: 'C++', cu: 'CUDA', cuh: 'CUDA',
@@ -102,7 +102,7 @@ function profileState(cfg, root) {
   if (!commit) { state.stale.push('GAUNTLET.md 没有提交，也没有记录 commit（写成 `commit: <hash>`）'); return state; }
   const r = run('git', ['diff', '--name-only', commit, '--', '.'], { cwd: root, quiet: true, allowFail: true });
   if (r.code !== 0) { state.stale.push(`记录的 commit ${commit} 在本仓库里找不到`); return state; }
-  const changed = r.stdout.split(/\r?\n/).filter((f) => f && !f.startsWith('.gauntlet/') && !f.startsWith(`${cfg.outDir}/`));
+  const changed = r.stdout.split(/\r?\n/).filter((f) => f && !isKitFile(f) && !f.startsWith(`${cfg.outDir}/`));
   state.changedFiles = changed.length;
   const important = changed.filter((f) => {
     const base = path.posix.basename(f);
@@ -177,7 +177,8 @@ export function survey(cfg) {
     if (/find_package\(\s*MPI|CMAKE_(C|CXX|Fortran)_COMPILER\b/.test(cmakeText)) notes.push('CMake 工程用了 MPI 或指定了编译器：先确认 clang 能原样编译它，否则用 commands 适配器、保留项目自己的编译器');
   }
   if (files.some((f) => base(f) === 'pom.xml' || /build\.gradle/.test(base(f)))) tests.add('JUnit (JVM)');
-  const features = files.filter((f) => f.endsWith('.feature'));
+  // the walk skips .gauntlet/: in the home layout the scenarios live there
+  const features = [...files, ...(cfg.home ? walk(cfg.abs(cfg.features)) : [])].filter((f) => f.endsWith('.feature'));
 
   const lint = [];
   for (const f of files) {
@@ -192,7 +193,7 @@ export function survey(cfg) {
   // gauntlet state
   const gauntlet = {
     kit: fs.existsSync(path.join(root, '.gauntlet', 'VERSION')) ? read(root, '.gauntlet/VERSION').trim() : null,
-    config: fs.existsSync(path.join(root, 'gauntlet.config.json')) ? { adapter: cfg.adapter, ratchet: !!cfg.ratchet?.enabled } : null,
+    config: fs.existsSync(configFile(root)) ? { adapter: cfg.adapter, ratchet: !!cfg.ratchet?.enabled } : null,
     baseline: fs.existsSync(path.join(root, cfg.ratchet?.baseline || 'gauntlet-baseline.json')),
     profile: profileState(cfg, root),
     base: (() => { const b = resolveBase(cfg, 'auto'); return b ? { name: b.name, how: b.how } : null; })(),

@@ -3,7 +3,7 @@
 // Usage: node .gauntlet/gauntlet.mjs <command> [options]   (run from anywhere inside the project)
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadConfig, findRoot, writeJson, run, which, KIT_DIR, ensureDir, readJson } from './lib/util.mjs';
+import { loadConfig, findRoot, configFile, writeJson, run, which, KIT_DIR, ensureDir, readJson, HOME, HOME_DEFAULTS } from './lib/util.mjs';
 import { generate } from './lib/gen.mjs';
 import { configure, build, testWithCoverage } from './lib/build.mjs';
 import { computeCrap, printCrap, lineHits } from './lib/crap.mjs';
@@ -28,8 +28,10 @@ import { leakMark, leakCheck, printLeak, splitList } from './lib/leak.mjs';
 
 const HELP = `gauntlet — 质量闸门（任何语言、任何工具链：项目自己的命令 + 标准报告）
 
-  init [--workdir tmp] [--adapter cmake-clang]
+  init [--home] [--workdir tmp] [--adapter cmake-clang]
                             生成 gauntlet.config.json、features/ 等骨架（在 commands 里填项目自己的构建 / 测试 / 检查命令）
+                            --home：所有文件放进 .gauntlet/（配置、档案、规则、qa、features、构建、输出），根目录不再多出别的；
+                                    环境变量 GAUNTLET_LAYOUT=home 时默认如此（还没有配置时 survey 的输出也进 .gauntlet/out）
                             --workdir：构建目录、输出目录、生成文件全部放进该目录（如 tmp）
                             --adapter cmake-clang：可选的深度分析，只适用于已经用 CMake 构建、clang 能编译的项目
   doctor                    检查工具链
@@ -46,8 +48,9 @@ const HELP = `gauntlet — 质量闸门（任何语言、任何工具链：项�
   dup                       重复代码检测（复制粘贴）
   crap                      函数的 CRAP / 覆盖率（需先 test）
   arch                      检查模块依赖方向和环
-  mutate [--changed] [--base <ref>] [--files a,b]
-                            变异测试（默认全部产品代码、不限数量）
+  mutate [--changed] [--base <ref>] [--files a,b] [--fresh]
+                            变异测试（默认全部产品代码、不限数量）；函数没改过的变异体沿用上次"已杀死"的结果，
+                            存活 / 未覆盖的每次都重测；--fresh 全部重测（gate --profile full 总是全部重测）
   compare <expected> <actual> --text [--tol x] [--atol y]
                             文本结果（日志、CSV、JSON、表格）逐行比较：文字一致（忽略空白），数字按容差比较
   compare <expected> <actual> [--dtype f32] [--header N] [--frame N] [--tol x | --exact]
@@ -61,7 +64,7 @@ const HELP = `gauntlet — 质量闸门（任何语言、任何工具链：项�
   baseline [--reset | --tighten]
                             棘轮模式（ratchet.enabled）：记录现有代码的质量欠账 gauntlet-baseline.json（由人确认）；
                             --tighten 只收紧：把基线降到当前值、删掉已还清的欠账（agent 可以运行）
-  gate --profile <specifier|coder|cleaner|hardener|full|quality>
+  gate --profile <specifier|coder|cleaner|hardener|full|quality> [--fresh]
                             quality：不需要任何场景，只量现有代码的质量（摸底、棘轮基线用）
                             按阶段运行对应闸门，写 gate.json，失败则退出码 1
   evidence [--title <t>] [--tutorial docs/x.md]
@@ -204,7 +207,9 @@ async function gate(cfg, args) {
       } else if (s === 'arch') { const a = await ops.arch(); printArch(a); gates.arch = { pass: a.pass, violations: a.violations.length, edges: a.edges.length, ...(a.skipped ? { skipped: a.skipped } : {}) }; }
       else if (s === 'mutation') {
         if (gates.tests && !gates.tests.pass) { gates.mutation = { pass: false, error: 'skipped: tests are red' }; continue; }
-        const m = await ops.mutate({ base: args.base, changed: !!args.changed || (useRatchet && cfg.ratchet.mutation !== 'all') });
+        // the evidence pack (full) never relies on cached mutation results
+        const cache = cfg.mutation.cache !== false && !args.fresh && profile !== 'full';
+        const m = await ops.mutate({ base: args.base, changed: !!args.changed || (useRatchet && cfg.ratchet.mutation !== 'all'), cache });
         gates.mutation = { pass: m.pass, score: m.summary.score, total: m.summary.total, survived: m.summary.survived, noCoverage: m.summary.noCoverage, ...(m.summary.unsupported ? { unsupported: m.summary.unsupported } : {}) };
       } else if (s === 'qa') gates.qa = qaGate(cfg);
       else if (s === 'constraints') { const c = constraintsGate(cfg); gates.constraints = { pass: c.pass, total: c.total, met: c.met, error: c.error }; }
@@ -258,9 +263,10 @@ async function baselineCmd(cfg, args) {
   return 0;
 }
 
-function init(root, workdir, adapter) {
+function init(root, workdir, adapter, home) {
   const tpl = path.join(KIT_DIR, 'templates');
   if (adapter && adapter !== true && adapter !== 'commands' && adapter !== 'cmake-clang') throw new Error(`unknown adapter "${adapter}" (use commands | cmake-clang)`);
+  if (home && fs.existsSync(path.join(root, 'gauntlet.config.json'))) throw new Error('根目录已有 gauntlet.config.json（经典布局）：继续用它（去掉 --home），或先把它和项目档案、qa/、features/ 等移进 .gauntlet/');
   const generic = adapter !== 'cmake-clang';
   const copy = (from, to, transform = (s) => s) => {
     const dst = path.join(root, to);
@@ -270,34 +276,43 @@ function init(root, workdir, adapter) {
     console.log(`  create ${to}`);
   };
   const wd = typeof workdir === 'string' ? workdir.replace(/\/+$/, '') : null;
-  copy(generic ? 'gauntlet.config.commands.json' : 'gauntlet.config.json', 'gauntlet.config.json', (s) => {
-    if (!wd) return s;
+  // home layout: config, rules, scenarios and build / output all go into .gauntlet/
+  const H = home ? `${HOME}/` : '';
+  const L = home ? HOME_DEFAULTS : { features: 'features', stepsDir: 'acceptance/steps', generatedDir: 'acceptance/generated' };
+  const cfgFile = `${H}gauntlet.config.json`;
+  copy(generic ? 'gauntlet.config.commands.json' : 'gauntlet.config.json', cfgFile, (s) => {
+    if (!wd && !home) return s;
     const j = JSON.parse(s);
-    Object.assign(j, { buildDir: `${wd}/build-gauntlet`, outDir: `${wd}/gauntlet-out`, generatedDir: `${wd}/acceptance-generated` });
+    if (home) for (const k of ['buildDir', 'outDir', 'features', 'stepsDir', 'generatedDir']) if (k in j) j[k] = HOME_DEFAULTS[k];
+    if (wd) Object.assign(j, { buildDir: `${wd}/build-gauntlet`, outDir: `${wd}/gauntlet-out`, generatedDir: `${wd}/acceptance-generated` });
     return `${JSON.stringify(j, null, 2)}\n`;
   });
-  if (!generic) copy('architecture.json', 'architecture.json');   // the template's paths.architecture default
-  ensureDir(path.join(root, 'features'));
-  if (!generic) ensureDir(path.join(root, 'acceptance', 'steps'));
+  if (!generic) copy('architecture.json', `${H}architecture.json`);   // the template's paths.architecture default
+  ensureDir(path.join(root, L.features));
+  if (!generic) ensureDir(path.join(root, L.stepsDir));
   const gi = path.join(root, '.gitignore');
-  const want = wd ? [`${wd}/`, 'gauntlet.local.json'] : generic ? ['gauntlet-out/', 'gauntlet.local.json'] : ['build-gauntlet*/', 'gauntlet-out/', 'gauntlet.local.json', 'acceptance/generated/'];
+  const local = `${H}gauntlet.local.json`;
+  const want = wd ? [`${wd}/`, local]
+    : home ? [`${H}out/`, `${H}build*/`, `${H}tmp/`, local, ...(generic ? [] : [`${L.generatedDir}/`])]
+    : generic ? ['gauntlet-out/', local] : ['build-gauntlet*/', 'gauntlet-out/', local, 'acceptance/generated/'];
   const have = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
   const missing = want.filter((w) => !have.split(/\r?\n/).includes(w));
   if (missing.length) { fs.appendFileSync(gi, `${have && !have.endsWith('\n') ? '\n' : ''}# gauntlet\n${missing.join('\n')}\n`); console.log(`  update .gitignore (+${missing.join(' ')})`); }
   if (generic) {
-    console.log(`\n下一步：编辑 gauntlet.config.json
+    console.log(`\n下一步：编辑 ${cfgFile}
   sources / exclude   本项目的产品代码（任何语言）和要排除的测试、生成代码
   commands.build      构建命令（解释型语言可删掉）
   commands.test       跑全部测试的命令；必须写出 JUnit XML（junit）和 LCOV 或 Cobertura 覆盖率（lcov / cobertura）
   commands.lint       可选：输出 SARIF 的检查器（eslint、ruff、semgrep、golangci-lint、cppcheck ……）
   commands.arch       可选：架构依赖检查命令（dependency-cruiser、import-linter、ArchUnit ……），退出码 0 = 无违规
   commands.mutation   可选：外部变异测试工具（Stryker、mull、mutmut ……）及其报告；不填用内置变异引擎
-验收场景：features/*.feature 里每个场景都要有一个名字包含场景名的测试。
+验收场景：${L.features}/*.feature 里每个场景都要有一个名字包含场景名的测试。
 命令里的 {out} 会替换成输出目录。改完运行 node .gauntlet/gauntlet.mjs doctor 检查。`);
     return;
   }
-  const gen = wd ? `${wd}/acceptance-generated` : 'acceptance/generated';
-  console.log(`\n在顶层 CMakeLists.txt 中加入：\n  include(.gauntlet/cmake/Gauntlet.cmake)\n  gauntlet_add_acceptance(LINK <你的库 target>${wd ? ` GENERATED_DIR \${CMAKE_SOURCE_DIR}/${gen}` : ''})\n并把单元测试注册到 CTest（add_test() 或所用测试框架的发现命令）。`);
+  const gen = wd ? `${wd}/acceptance-generated` : L.generatedDir;
+  const dirs = `${home ? ` STEPS_DIR \${CMAKE_SOURCE_DIR}/${L.stepsDir}` : ''}${wd || home ? ` GENERATED_DIR \${CMAKE_SOURCE_DIR}/${gen}` : ''}`;
+  console.log(`\n在顶层 CMakeLists.txt 中加入：\n  include(.gauntlet/cmake/Gauntlet.cmake)\n  gauntlet_add_acceptance(LINK <你的库 target>${dirs})\n并把单元测试注册到 CTest（add_test() 或所用测试框架的发现命令）。`);
 }
 
 function doctor(cfg) {
@@ -350,8 +365,8 @@ async function main() {
   const cmd = args._[0];
   if (!cmd || cmd === 'help' || args.help) { console.log(HELP); return 0; }
   const root = findRoot();
-  if (cmd === 'init') { init(root, args.workdir, args.adapter); return 0; }
-  if (cmd === 'doctor' && !fs.existsSync(path.join(root, 'gauntlet.config.json'))) {
+  if (cmd === 'init') { init(root, args.workdir, args.adapter, !!args.home || path.dirname(configFile(root)) !== root); return 0; }
+  if (cmd === 'doctor' && !fs.existsSync(configFile(root))) {
     console.log(`✅ node           ${process.version}（需要 18.17+）\n${which('git') ? '✅' : '❌'} git\n还没有 gauntlet.config.json：先运行 survey 看清项目，再 init。`);
     return 1;
   }
@@ -381,7 +396,7 @@ async function main() {
     case 'crap': { if (isGeneric && !fs.existsSync(cfg.out('static.json'))) await ops.static(); const r = await ops.crap(); printCrap(r); return r.pass ? 0 : 1; }
     case 'arch': { const r = await ops.arch(); printArch(r); return r.pass ? 0 : 1; }
     case 'mutate': {
-      const r = await ops.mutate({ base: args.base, changed: !!args.changed, files: typeof args.files === 'string' ? args.files.split(',') : null });
+      const r = await ops.mutate({ base: args.base, changed: !!args.changed, files: typeof args.files === 'string' ? args.files.split(',') : null, cache: cfg.mutation.cache !== false && !args.fresh });
       return r.pass ? 0 : 1;
     }
     case 'compare': {

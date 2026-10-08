@@ -1,12 +1,12 @@
 {
   "title": "roman：阿拉伯数字 ⇄ 罗马数字",
-  "cwd": "..",
+  "cwd": "../..",
   "steps": [
     { "say": "把今年和一个经典年份转成罗马数字" },
-    { "run": "build-gauntlet/roman 2026 1994" },
+    { "run": ".gauntlet/build/roman 2026 1994" },
     { "say": "反过来也行，可以混着输入" },
-    { "run": "build-gauntlet/roman MCMXCIV 7" },
+    { "run": ".gauntlet/build/roman MCMXCIV 7" },
     { "say": "非法输入会给出清晰的错误和退出码 2" },
-    { "run": "build-gauntlet/roman IIII 4000", "expectCode": 2 }
+    { "run": ".gauntlet/build/roman IIII 4000", "expectCode": 2 }
   ]
 }

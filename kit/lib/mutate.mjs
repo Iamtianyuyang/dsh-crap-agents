@@ -8,7 +8,8 @@
 //   ACCEPTED     listed in mutation-accepted.json as an equivalent mutant (shown to the human reviewer)
 import fs from 'node:fs';
 import path from 'node:path';
-import { listSources, relToRoot, gitChangedLines, writeJson, readJson, CODE_EXT, pathOf } from './util.mjs';
+import crypto from 'node:crypto';
+import { listSources, relToRoot, gitChangedLines, writeJson, readJson, CODE_EXT, pathOf, KIT_DIR } from './util.mjs';
 import { build, ctest } from './build.mjs';
 import { lineHits, computeCrap } from './crap.mjs';
 import { mask, maskSource, isFortran, langOf } from './lang.mjs';
@@ -142,6 +143,37 @@ export function writeFileRetry(file, data) {
   }
 }
 
+// ---- result cache: do not re-test mutants of functions that did not change ----
+// A KILLED / TIMEOUT / COMPILE_ERROR result is reused while the function holding the mutant is byte-for-byte
+// the same and the project builds and tests the same way (commands, adapter, kit version). SURVIVED and
+// NO_COVERAGE are never reused: they are the open work. The cache only speeds up the hardening loop;
+// `gate --profile full` (the evidence pack) and `--fresh` never read it, so evidence is always a full run.
+const CACHE_VERSION = 1;
+const REUSABLE = new Set(['KILLED', 'TIMEOUT', 'COMPILE_ERROR']);
+const cacheFile = (cfg) => cfg.out('mutation-cache.json');
+const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+
+function cacheContext(cfg) {
+  let kit = '';
+  try { kit = fs.readFileSync(path.join(KIT_DIR, 'VERSION'), 'utf8').trim(); } catch { /* unversioned kit */ }
+  const { adapter, commands, cmake, buildDir, llvm, mutation } = cfg;
+  return sha(JSON.stringify({ CACHE_VERSION, kit, adapter, commands, cmake, buildDir, llvm, timeoutFactor: mutation.timeoutFactor, minTimeoutSec: mutation.minTimeoutSec }));
+}
+
+/** Key of a mutant: the source of its innermost function (whole file when unknown) + its place in it. */
+function mutantKey(rel, src, lineStarts, ranges, m) {
+  let best = null;
+  for (const r of ranges || []) if (m.line >= r[0] && m.line <= r[1] && (!best || r[1] - r[0] < best[1] - best[0])) best = r;
+  const start = best ? lineStarts[best[0] - 1] ?? 0 : 0;
+  const end = best ? lineStarts[best[1]] ?? src.length : src.length;
+  return `${sha(`${rel}\n${src.slice(start, end)}`).slice(0, 32)}:${m.pos - start}:${m.len}:${m.replacement}`;
+}
+
+function loadCache(cfg, context) {
+  const c = readJson(cacheFile(cfg), null);
+  return c?.version === CACHE_VERSION && c.context === context && c.entries && typeof c.entries === 'object' ? c.entries : {};
+}
+
 const journalDir = (cfg) => cfg.out('mutation-restore');
 
 function journalAdd(cfg, abs, src) {
@@ -225,6 +257,8 @@ export async function mutateWith(cfg, opts, exec) {
   const files = opts.files?.length ? opts.files.map((f) => path.resolve(cfg.root, f)) : exec.files;
   const plan = [];
   const unsupported = [];
+  let rangesAt = 0;   // when static analysis last recorded the function ranges (cache keys rely on them)
+  try { rangesAt = fs.statSync(cfg.out('static.json')).mtimeMs; } catch { /* no static analysis: whole-file keys */ }
   for (const abs of files) {
     const rel = relToRoot(cfg, abs);
     let only = null;
@@ -236,8 +270,13 @@ export async function mutateWith(cfg, opts, exec) {
     const lang = exec.lang(abs);
     if (!lang) { unsupported.push(rel); continue; }
     const src = fs.readFileSync(abs, 'utf8');
-    const ms = inFunctions(findMutants(src, { onlyLines: only, lang }), exec.fnRanges.get(rel));
-    for (const m of ms) plan.push({ ...m, file: rel, abs });
+    const ranges = exec.fnRanges.get(rel);
+    const ms = inFunctions(findMutants(src, { onlyLines: only, lang }), ranges);
+    const lineStarts = [0];
+    for (let i = 0; i < src.length; i++) if (src[i] === '\n') lineStarts.push(i + 1);
+    // function ranges older than the file may no longer match its functions: key on the whole file then
+    const keyRanges = rangesAt >= fs.statSync(abs).mtimeMs ? ranges : null;
+    for (const m of ms) plan.push({ ...m, file: rel, abs, key: mutantKey(rel, src, lineStarts, keyRanges, m) });
   }
   const scope = changed ? `相对 ${changed.ref.slice(0, 10)} 改动过的行` : '全部产品代码';
   let mutants = plan;
@@ -267,6 +306,13 @@ export async function mutateWith(cfg, opts, exec) {
   // Equivalent mutants a human agreed to accept: [{file, op, source, reason}] ("source" = substring of the line).
   const accepted = readJson(pathOf(cfg, 'mutationAccepted'), []);
   const acceptedBy = (m, text) => accepted.find((a) => a.file === m.file && a.op === m.op && text.includes(a.source));
+  // the cache is always written (a fresh run warms it) but only read when asked
+  const context = cacheContext(cfg);
+  const known = loadCache(cfg, context);
+  const reuse = opts.cache ? known : {};
+  // a run over everything rewrites the cache with exactly its own mutants; partial runs add to it
+  const entries = !opts.files?.length && !changed && mutants === plan ? {} : { ...known };
+  const saveCache = () => writeJson(cacheFile(cfg), { version: CACHE_VERSION, context, entries });
   const results = [];
   try {
     for (let k = 0; k < mutants.length; k++) {
@@ -274,9 +320,11 @@ export async function mutateWith(cfg, opts, exec) {
       const fileHits = exec.hits?.get(m.file);
       const knownUncovered = exec.hits && (fileHits ? !((fileHits.get(m.line) || 0) > 0) : exec.missingFileIsUncovered);
       let status;
+      let cached = false;
       const acc = acceptedBy(m, lineText(cfg, m.file, m.line));
       if (acc) status = 'ACCEPTED';
       else if (knownUncovered) status = 'NO_COVERAGE';
+      else if (REUSABLE.has(reuse[m.key])) { status = reuse[m.key]; cached = true; }
       else {
         if (!originals.has(m.abs)) { const orig = fs.readFileSync(m.abs, 'utf8'); journalAdd(cfg, m.abs, orig); originals.set(m.abs, orig); }
         const src = originals.get(m.abs);
@@ -287,11 +335,15 @@ export async function mutateWith(cfg, opts, exec) {
           writeFileRetry(m.abs, src);
         }
       }
-      const { abs, pos, len, ...rest } = m;
-      results.push({ ...rest, status, ...(acc ? { reason: acc.reason } : {}) });
-      process.stdout.write(`  [${k + 1}/${mutants.length}] ${status.padEnd(13)} ${m.file}:${m.line}:${m.col}  ${m.op}\n`);
+      if (REUSABLE.has(status)) entries[m.key] = status;
+      else delete entries[m.key];
+      if (!cached && (k + 1) % 20 === 0) saveCache();   // an interrupted run keeps what it learned
+      const { abs, pos, len, key, ...rest } = m;
+      results.push({ ...rest, status, ...(cached ? { cached: true } : {}), ...(acc ? { reason: acc.reason } : {}) });
+      process.stdout.write(`  [${k + 1}/${mutants.length}] ${status.padEnd(13)} ${m.file}:${m.line}:${m.col}  ${m.op}${cached ? '  (cached)' : ''}\n`);
     }
   } finally {
+    try { saveCache(); } catch (e) { console.error(`mutation: cache not saved: ${e.message}`); }   // never in the way of restoring
     restoreAll();
     process.off('SIGINT', onSig);
     process.off('SIGTERM', onSig);
@@ -312,7 +364,7 @@ export function writeMutationReport(cfg, { scope, candidates, results, tool, uns
   const report = {
     scope,
     ...(tool ? { tool } : {}),
-    summary: { total: results.length, candidates: candidates ?? results.length, killed, survived, noCoverage: noCov, compileErrors: count('COMPILE_ERROR'), accepted: count('ACCEPTED'), unsupported: unsupported.length, score: Math.round(score * 1000) / 1000 },
+    summary: { total: results.length, candidates: candidates ?? results.length, killed, survived, noCoverage: noCov, compileErrors: count('COMPILE_ERROR'), accepted: count('ACCEPTED'), cached: results.filter((r) => r.cached).length, unsupported: unsupported.length, score: Math.round(score * 1000) / 1000 },
     threshold: cfg.thresholds.mutationScoreMin,
     // code the engine could not mutate at all is not "killed": it needs an external tool or a human decision
     pass: score >= cfg.thresholds.mutationScoreMin && unsupported.length === 0,
@@ -322,7 +374,7 @@ export function writeMutationReport(cfg, { scope, candidates, results, tool, uns
     results,
   };
   writeJson(cfg.out('mutation.json'), report);
-  console.log(`\nMUTATION score=${(score * 100).toFixed(1)}%  killed=${killed} survived=${survived} no-coverage=${noCov} compile-errors=${report.summary.compileErrors}`);
+  console.log(`\nMUTATION score=${(score * 100).toFixed(1)}%  killed=${killed} survived=${survived} no-coverage=${noCov} compile-errors=${report.summary.compileErrors}${report.summary.cached ? `  (${report.summary.cached} reused from unchanged functions; --fresh re-tests all)` : ''}`);
   for (const s of report.survivors.slice(0, 20)) console.log(`  ${s.status.padEnd(11)} ${s.file}:${s.line}  ${s.op}   | ${String(s.source).trim()}`);
   if (unsupported.length) console.log(`  ${unsupported.length} 个文件没法变异（语言不支持）：配置 commands.mutation（外部变异工具），或 NEED-HUMAN`);
   console.log(report.pass ? 'MUTATION gate: PASS' : 'MUTATION gate: FAIL');

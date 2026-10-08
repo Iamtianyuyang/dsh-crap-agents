@@ -84,15 +84,32 @@ test('reads configured report paths with recursive local overrides while keeping
   assert.equal(fs.existsSync(path.join(directory, 'machine-output', 'workflow')), false);
 });
 
+test('a configuration in .gauntlet/ selects the home layout and its own local overrides', (t) => {
+  const { directory, write } = fixture(t);
+  write('.gauntlet/gauntlet.config.json', { thresholds: { crapMax: 8 } });
+  write('.gauntlet/gauntlet.local.json', { thresholds: { crapMax: 6 } });
+  write('gauntlet.local.json', { thresholds: { crapMax: 1 }, outDir: 'stray' });
+  write('.gauntlet/out/crap.json', { summary: { maxCrap: 3 } });
+  write('.gauntlet/qa/qa-report.json', { verdict: 'pass', checks: [] });
+  const captured = captureWorkflowSnapshot(execution(directory), result());
+  assert.equal(captured.path, path.join(directory, '.gauntlet', 'out', 'workflow', 'call-1', 'reports.json'));
+  const { reports } = read(captured.path);
+  assert.equal(reports.config.path, path.join(directory, '.gauntlet', 'gauntlet.config.json'));
+  assert.equal(reports.config.value.thresholds.crapMax, 6);
+  assert.equal(reports.crap.value.summary.maxCrap, 3);
+  assert.equal(reports.qa.status, 'ready');
+  assert.equal(fs.existsSync(path.join(directory, 'gauntlet-out')), false);
+});
+
 test('keeps every convergence profile and aliases the current gate profile only', (t) => {
   const { directory, write } = fixture(t);
-  write('gauntlet-out/gate.json', { profile: 'cleaner' });
-  for (const profile of ['specifier', 'coder', 'cleaner', 'hardener', 'full', 'quality']) write(`gauntlet-out/loop-${profile}.json`, { rounds: [{ verdict: profile === 'cleaner' ? 'STALLED' : 'CONTINUE' }] });
+  write('.gauntlet/out/gate.json', { profile: 'cleaner' });
+  for (const profile of ['specifier', 'coder', 'cleaner', 'hardener', 'full', 'quality']) write(`.gauntlet/out/loop-${profile}.json`, { rounds: [{ verdict: profile === 'cleaner' ? 'STALLED' : 'CONTINUE' }] });
   const reports = readWorkflowReports(directory);
   assert.equal(reports.loop.value.rounds[0].verdict, 'STALLED');
   assert.equal(reports.loop.path, reports.loopCleaner.path);
   for (const name of ['loopSpecifier', 'loopCoder', 'loopCleaner', 'loopHardener', 'loopFull', 'loopQuality']) assert.equal(reports[name].status, 'ready');
-  write('gauntlet-out/gate.json', { profile: 'unknown' });
+  write('.gauntlet/out/gate.json', { profile: 'unknown' });
   assert.deepEqual(readWorkflowReports(directory).loop, { status: 'missing', path: null });
 });
 
@@ -116,19 +133,19 @@ test('invalid config, local config, or configured paths produces explicit depend
   assert.equal(reports.crap.status, 'error');
 });
 
-test('missing configs use path defaults and malformed metric JSON stays an error', (t) => {
+test('missing configs use home-layout path defaults and malformed metric JSON stays an error', (t) => {
   const { directory, write } = fixture(t);
-  write('gauntlet-out/static.json', '{ incomplete');
-  write('qa/constraints.json', '\uFEFF[{"id":"C1"}]');
+  write('.gauntlet/out/static.json', '{ incomplete');
+  write('.gauntlet/qa/constraints.json', '\uFEFF[{"id":"C1"}]');
   const reports = readWorkflowReports(directory);
   assert.equal(reports.config.status, 'missing');
-  assert.deepEqual(reports.config.value, { outDir: 'gauntlet-out', paths: { qa: 'qa' } });
+  assert.deepEqual(reports.config.value, { outDir: '.gauntlet/out', paths: { qa: '.gauntlet/qa' } });
   assert.equal(reports.static.status, 'error');
-  assert.equal(reports.static.path, path.join(directory, 'gauntlet-out', 'static.json'));
+  assert.equal(reports.static.path, path.join(directory, '.gauntlet', 'out', 'static.json'));
   assert.match(reports.static.error, /JSON|property|Unexpected|Expected/i);
   assert.equal(reports.constraints.status, 'ready');
   assert.deepEqual(reports.constraints.value, [{ id: 'C1' }]);
-  write('gauntlet.local.json', { thresholds: { crapMax: 4 }, outDir: 'local-output' });
+  write('.gauntlet/gauntlet.local.json', { thresholds: { crapMax: 4 }, outDir: 'local-output' });
   const locallyConfigured = readWorkflowReports(directory);
   assert.equal(locallyConfigured.config.status, 'ready');
   assert.equal(locallyConfigured.config.localOverrides, true);
@@ -152,7 +169,7 @@ test('registers a synchronous observer restricted to exact Gauntlet stage calls'
     execution(directory, { callId: 'unknown-preset', agent: { ctx: {}, session: { header: { cwd: directory } } } }),
     execution(directory, { callId: 'no-agent', agent: undefined }),
   ]) assert.equal(callback(exec, result()), undefined);
-  assert.equal(fs.existsSync(path.join(directory, 'gauntlet-out')), false);
+  assert.equal(fs.existsSync(path.join(directory, '.gauntlet', 'out')), false);
   assert.equal(callback(execution(directory), result()), undefined);
   assert.equal(fs.existsSync(workflowSnapshotPath(directory, 'call-1')), true);
 });
@@ -161,7 +178,7 @@ test('background launch acknowledgements do not snapshot unfinished stages', (t)
   const { directory } = fixture(t);
   const captured = captureWorkflowSnapshot(execution(directory), result({ value: { kind: 'background', runId: 'child-session' }, content: [{ type: 'text', text: 'Started background task' }] }));
   assert.deepEqual(captured, { status: 'skipped' });
-  assert.equal(fs.existsSync(path.join(directory, 'gauntlet-out')), false);
+  assert.equal(fs.existsSync(path.join(directory, '.gauntlet', 'out')), false);
 });
 
 test('captures final errors and prefers final content over foreground fallback output', (t) => {
@@ -178,10 +195,10 @@ test('captures final errors and prefers final content over foreground fallback o
 
 test('re-delivery cannot replace stage evidence with overwritten live reports', (t) => {
   const { directory, write } = fixture(t);
-  write('gauntlet-out/crap.json', { summary: { maxCrap: 25 } });
+  write('.gauntlet/out/crap.json', { summary: { maxCrap: 25 } });
   const initial = captureWorkflowSnapshot(execution(directory), result());
   const bytes = fs.readFileSync(initial.path, 'utf8');
-  write('gauntlet-out/crap.json', { summary: { maxCrap: 1 } });
+  write('.gauntlet/out/crap.json', { summary: { maxCrap: 1 } });
   const repeated = captureWorkflowSnapshot(execution(directory), result({ content: [{ type: 'text', text: 'different later output' }] }));
   assert.equal(repeated.status, 'exists');
   assert.equal(fs.readFileSync(initial.path, 'utf8'), bytes);
@@ -195,7 +212,7 @@ test('encodes path traversal and separator characters without writing outside th
   const callId = '../attempt/with\\separator';
   const captured = captureWorkflowSnapshot(execution(directory, { callId }), result());
   assert.equal(captured.status, 'written');
-  assert.equal(captured.path, path.join(directory, 'gauntlet-out', 'workflow', '%2E%2E%2Fattempt%2Fwith%5Cseparator', 'reports.json'));
+  assert.equal(captured.path, path.join(directory, '.gauntlet', 'out', 'workflow', '%2E%2E%2Fattempt%2Fwith%5Cseparator', 'reports.json'));
   assert.equal(read(captured.path).callId, callId);
   const dotOnly = captureWorkflowSnapshot(execution(directory, { callId: '..' }), result());
   assert.equal(dotOnly.status, 'written');
@@ -205,8 +222,8 @@ test('encodes path traversal and separator characters without writing outside th
 
 test('size limits produce explicit error envelopes while preserving other evidence', (t) => {
   const { directory, write } = fixture(t);
-  write('gauntlet-out/crap.json', { functions: ['x'.repeat(REPORT_FILE_LIMIT)] });
-  write('gauntlet-out/static.json', { summary: { maxComplexity: 2 }, functions: [] });
+  write('.gauntlet/out/crap.json', { functions: ['x'.repeat(REPORT_FILE_LIMIT)] });
+  write('.gauntlet/out/static.json', { summary: { maxComplexity: 2 }, functions: [] });
   const captured = captureWorkflowSnapshot(execution(directory), result());
   assert.equal(captured.status, 'written');
   const snapshot = read(captured.path);
@@ -215,8 +232,8 @@ test('size limits produce explicit error envelopes while preserving other eviden
   assert.equal(snapshot.reports.crap.value, undefined);
   assert.equal(snapshot.reports.static.status, 'ready');
   assert.ok(fs.statSync(captured.path).size <= SNAPSHOT_LIMIT);
-  write('gauntlet-out/crap.json', { padding: 'x'.repeat(80) });
-  write('gauntlet-out/static.json', { padding: 'y'.repeat(80) });
+  write('.gauntlet/out/crap.json', { padding: 'x'.repeat(80) });
+  write('.gauntlet/out/static.json', { padding: 'y'.repeat(80) });
   const reports = readWorkflowReports(directory, { fileLimit: 128, totalLimit: 150 });
   assert.equal(reports.crap.status, 'ready');
   assert.equal(reports.static.status, 'error');
@@ -225,7 +242,7 @@ test('size limits produce explicit error envelopes while preserving other eviden
 
 test('serialized size limits handle JSON escaping with explicit omissions', (t) => {
   const { directory, write } = fixture(t);
-  write('gauntlet-out/crap.json', { trace: '\u0000'.repeat(1300) });
+  write('.gauntlet/out/crap.json', { trace: '\u0000'.repeat(1300) });
   const captured = captureWorkflowSnapshot(execution(directory), result(), { fileLimit: 10000, totalLimit: 9500 });
   assert.equal(captured.status, 'written');
   const snapshot = read(captured.path);
@@ -248,7 +265,7 @@ test('large output truncation is explicit and keeps complete UTF-8 characters', 
 
 test('unwritable snapshot targets and malformed executions never throw from the observer', (t) => {
   const { directory, write } = fixture(t);
-  write('gauntlet-out', 'not a directory');
+  write('.gauntlet/out', 'not a directory');
   const captured = captureWorkflowSnapshot(execution(directory), result());
   assert.equal(captured.status, 'error');
   let callback;

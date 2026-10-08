@@ -9,7 +9,7 @@ description: Gauntlet 第 4 阶段（Hardener）：用变异测试找出测试�
 （`<`→`<=`、`+`→`-`、`true`→`false`、条件取反、常数 +1……），如果测试仍然全部通过，
 说明那一行的行为没有被任何断言锁住——这就是"存活变异体"。你的目标：**零存活**。
 
-**先看 `gauntlet.config.json` 的 `adapter`**，再读对应适配器技能的「4 加固」一节：
+**先看 `.gauntlet/gauntlet.config.json` 的 `adapter`**，再读对应适配器技能的「4 加固」一节：
 `commands`（或没写）→ gauntlet-adapter-commands；`cmake-clang` → gauntlet-adapter-cmake。
 
 ## 步骤
@@ -17,9 +17,11 @@ description: Gauntlet 第 4 阶段（Hardener）：用变异测试找出测试�
 1. 读任务、切分支（gauntlet-core）。
 2. `node .gauntlet/gauntlet.mjs test` → `node .gauntlet/gauntlet.mjs static` → `node .gauntlet/gauntlet.mjs mutate`
    （默认变异**全部产品代码**、不限数量——每个变异体都要重新构建并跑全部测试，
-   可能要跑几个小时，这是正常的，不要为了快去缩小范围；结果在输出目录的 `mutation.json`）
+   第一次可能要跑几个小时，这是正常的，不要为了快去缩小范围；结果在输出目录的 `mutation.json`）。
+   之后再跑时，函数没改过的变异体直接沿用上次"已杀死"的结果（输出里标 `(cached)`），只重测改过的函数和存活者，
+   所以补测试的循环会快很多。不要删输出目录里的 `mutation-cache.json`，也不要为了"保险"每次都加 `--fresh`。
 3. 逐个处理存活者（见下表）。修的过程中可以用 `--files a,b` 只重跑相关文件，
-   **最后一次必须是不带 `--files` 的完整运行**。
+   **最后一次必须是不带 `--files` 的完整运行**。证据包阶段的 `gate --profile full` 会不用缓存全部重测一遍。
    - 程序入口的存活者：给真实入口加冒烟测试（写法见适配器技能），不要把入口排除掉。
 4. 用 `next --profile hardener` 循环（gauntlet-core 第 7 节），直到 DONE。
 5. 提交、推送、收尾；summary 写清：杀死了多少、加了哪些测试、接受了哪些等价变异体。
@@ -28,12 +30,15 @@ description: Gauntlet 第 4 阶段（Hardener）：用变异测试找出测试�
 
 | 状态 | 含义 | 处理 |
 |---|---|---|
-| `SURVIVED` 边界类（`<`→`<=`、`5`→`6`） | 缺边界值测试 | 加测试：刚好在边界、边界 ±1 |
-| `SURVIVED` 逻辑类（`&&`→`\|\|`、条件取反） | 缺"另一半"条件的测试 | 让每个子条件单独为真/为假各测一次 |
-| `SURVIVED` 返回值（`true`→`false`） | 返回值从未被断言 | 断言返回值 / 退出码 |
+| `SURVIVED` 边界类（`<`→`<=`、`5`→`6`） | 缺边界值测试 | 在已有的表里加行：刚好在边界、边界 ±1 |
+| `SURVIVED` 逻辑类（`&&`→`\|\|`、条件取反） | 缺"另一半"条件的测试 | 表里加行，让每个子条件单独为真/为假各一次 |
+| `SURVIVED` 返回值（`true`→`false`） | 返回值从未被断言 | 给已有用例补上返回值 / 退出码的断言 |
 | `NO_COVERAGE` | 这一行从未被执行 | 补测试执行它；如果确实走不到，那是死代码——删掉（删代码需在 summary 里说明） |
 | `TIMEOUT` | 变异导致死循环，已算作杀死 | 无需处理 |
 | `COMPILE_ERROR` | 变异体编译不过，已忽略 | 无需处理 |
+
+补测试按 gauntlet-core 第 8 节写成表驱动：**先往已有的表里加一行**，一个变异体不值得一个新的测试函数；
+同一个函数的几个存活者通常一张表就能全部杀死。
 
 **优先补验收场景以外的单元测试**。如果一个存活者暴露的是"需求没写到的行为"
 （例如空输入时会崩溃），既要加单元测试，也要在小结的 next 里记一笔：需求可能缺一条场景，必要时回到规格阶段补。
@@ -53,7 +58,7 @@ description: Gauntlet 第 4 阶段（Hardener）：用变异测试找出测试�
 处理顺序：
 
 1. 先尝试**重构**让它不再等价（往往说明代码有冗余）。
-2. 实在不行，把它写进仓库根目录的 `mutation-accepted.json`：
+2. 实在不行，把它写进 `.gauntlet/mutation-accepted.json`：
    ```json
    [
      { "file": "src/app/cli.cpp", "op": "4 -> 5", "source": "arg.size() <= 4",

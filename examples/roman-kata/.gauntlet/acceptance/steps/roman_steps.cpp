@@ -1,4 +1,4 @@
-// Step definitions for features/roman.feature. Drive the application boundary (roman::cli::run),
+// Step definitions for .gauntlet/features/roman.feature. Drive the application boundary (roman::cli::run),
 // not the internals: acceptance tests describe behaviour, unit tests pin the details.
 #include <sstream>
 #include <string>

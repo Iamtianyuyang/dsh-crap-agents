@@ -1,13 +1,13 @@
 ---
 name: gauntlet-adapter-commands
-description: Gauntlet 工具链片段——在目标仓库 gauntlet.config.json 的 adapter 是 "commands" 或没写时使用（通用方式，任何项目）：任何语言、编译器、构建系统和运行环境的项目里每个阶段具体怎么做（报告契约、工具链原则、编译器告警、覆盖率、验收测试按场景名命名、变异测试、常见问题）。
+description: Gauntlet 工具链片段——在目标仓库 .gauntlet/gauntlet.config.json 的 adapter 是 "commands" 或没写时使用（通用方式，任何项目）：任何语言、编译器、构建系统和运行环境的项目里每个阶段具体怎么做（报告契约、工具链原则、编译器告警、覆盖率、验收测试按场景名命名、变异测试、常见问题）。
 ---
 
 # commands 适配器（任何语言）
 
 阶段技能讲"做什么"，本技能讲在非 CMake 项目里"用什么做"。只读你所在阶段的那一节。
 
-闸门不认识语言，只认识**标准报告**；项目在 `gauntlet.config.json` 的 `commands` 里说明怎么产生它们：
+闸门不认识语言，只认识**标准报告**；项目在 `.gauntlet/gauntlet.config.json` 的 `commands` 里说明怎么产生它们：
 
 | 闸门 | 来源 |
 |---|---|
@@ -49,7 +49,7 @@ Gauntlet 不认识也不需要认识具体的编译器或框架，它只要求�
 node .gauntlet/gauntlet.mjs init --adapter commands   # 需求要求中间文件放在 tmp 时再加 --workdir tmp
 ```
 
-1. 照 survey.md 的草稿和生成的 `gauntlet.config.json` 里 `$examples` 的样子填写：
+1. 照 survey.md 的草稿和生成的 `.gauntlet/gauntlet.config.json` 里 `$examples` 的样子填写：
    - `sources`：**全部**产品代码（例如 `["src/**/*.py"]`、`["cmd/**/*.go", "internal/**/*.go"]`），不是只有本次要改的；
    - `commands.test`：项目现有的测试命令 + 输出 JUnit 和覆盖率的参数，并在 `junit` / `lcov`（或 `cobertura`）里写出报告路径；
    - `commands.lint`：项目已经在用的检查器（survey.md 列出了 CI 里跑的命令和已有的配置文件），让它输出 SARIF；
@@ -65,7 +65,7 @@ node .gauntlet/gauntlet.mjs init --adapter commands   # 需求要求中间文件
 
 ## 2 编码（Coder）
 
-- 用项目自己的测试框架（`GAUNTLET.md` 里写着）。
+- 用项目自己的测试框架（`.gauntlet/GAUNTLET.md` 里写着）。
 - **验收测试命名契约**：每个场景一个测试，测试名包含场景名，例如
   ```js
   test('补中奖励下一球', () => { /* 通过命令行入口 / 公开 API 驱动 */ });
@@ -75,6 +75,11 @@ node .gauntlet/gauntlet.mjs init --adapter commands   # 需求要求中间文件
   for (const [input, error] of invalid) test(`非法输入被拒绝 [输入=${input}]`, () => { /* ... */ });
   ```
   很多 BDD 框架默认就按场景名命名测试，项目已经在用的话可以直接用。
+- 单元测试同样表驱动（gauntlet-core 第 8 节），用框架自带的参数化：
+  ```js
+  const cases = [['全 0', Array(20).fill(0), 0], ['全 1', Array(20).fill(1), 20], ['满分', Array(12).fill(10), 300]];
+  for (const [name, rolls, want] of cases) test(`score [${name}]`, () => assert.equal(score(rolls), want));
+  ```
 - 验收测试驱动应用边界（命令行入口函数、HTTP handler、公开 API），不测内部函数；内部细节交给单元测试。
 - `node .gauntlet/gauntlet.mjs test` 的 `ACCEPTANCE` 一栏列出"没有对应测试"和"测试失败"的场景。
 - 谦卑对象：真正的入口文件只转发参数，逻辑放进可测试的函数；
@@ -85,7 +90,7 @@ node .gauntlet/gauntlet.mjs init --adapter commands   # 需求要求中间文件
 | 闸门 | 这个适配器下怎么过 |
 |---|---|
 | `scope` | 文件状态 `unsupported` = 内置分析器不认识这种语言：装 lizard（`pip install lizard`）后重跑；装不了就 NEED-HUMAN |
-| `warnings` / `tidy` | 按告警 / SARIF 里的规则修；真正的误报才写进 `quality-accepted.json`（`kind` 用 `warning` / `tidy`，`check` 写 `工具名/规则 id`） |
+| `warnings` / `tidy` | 按告警 / SARIF 里的规则修；真正的误报才写进 `.gauntlet/quality-accepted.json`（`kind` 用 `warning` / `tidy`，`check` 写 `工具名/规则 id`） |
 | `arch` | 按架构工具的输出做依赖倒置；改规则文件需要人确认 |
 
 - 内置复杂度分析器是启发式的（按大括号或缩进找函数）：如果 `static.json` 里的函数边界明显不对，
@@ -104,7 +109,7 @@ node .gauntlet/gauntlet.mjs init --adapter commands   # 需求要求中间文件
 
 ## 5 QA / 6 证据包
 
-- 真实产物就是项目平时的运行方式（`GAUNTLET.md`「构建、测试、运行」一节），QA 文档和 demo 脚本里写同样的命令。
+- 真实产物就是项目平时的运行方式（`.gauntlet/GAUNTLET.md`「构建、测试、运行」一节），QA 文档和 demo 脚本里写同样的命令。
 - 架构图的 `boundaries` 用架构检查工具规则里的模块。
 
 ## 常见问题

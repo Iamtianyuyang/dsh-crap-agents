@@ -65,7 +65,7 @@ flowchart LR
 
 | 阶段 | 子代理工具 | 阶段技能 | 必须通过的闸门 |
 |---|---|---|---|
-| ⓪ 摸底 | `gauntlet_surveyor` | `gauntlet-survey` | `doctor` 全绿、`test` 跑完、写好 `GAUNTLET.md` |
+| ⓪ 摸底 | `gauntlet_surveyor` | `gauntlet-survey` | `doctor` 全绿、`test` 跑完、写好 `.gauntlet/GAUNTLET.md` |
 | ① 规格 | `gauntlet_specifier` | `gauntlet-specify` | `gate --profile specifier` |
 | ② 编码 | `gauntlet_coder` | `gauntlet-tdd` | `gate --profile coder` |
 | ③ 清理 | `gauntlet_cleaner` | `gauntlet-clean` | `gate --profile cleaner` |
@@ -73,7 +73,7 @@ flowchart LR
 | ⑤ QA | `gauntlet_qa` | `gauntlet-qa` | QA 报告全部通过 |
 | ⑥ 证据包 | `gauntlet_reporter` | `gauntlet-report` | `gate --profile full` |
 
-每个阶段子 agent 先读共同规则 `gauntlet-core`，再按项目 `gauntlet.config.json` 的 `adapter`
+每个阶段子 agent 先读共同规则 `gauntlet-core`，再按项目 `.gauntlet/gauntlet.config.json` 的 `adapter`
 读一个工具链片段（`gauntlet-adapter-commands` 通用 / `gauntlet-adapter-cmake` 深度分析）。
 
 几条贯穿全程的规矩：
@@ -115,14 +115,14 @@ flowchart LR
 状态随阶段工具调用、`GAUNTLET-RESULT` 和 Leader 的 todo 更新：未开始、进行中、已通过、需返工、等待确认、已中断、待核实、需重跑。
 截图里的数据是 [`scripts/preview-diagram.mjs`](scripts/preview-diagram.mjs) 的示例，它用 `lib/client.js` 里的真实组件渲染静态预览（`node scripts/preview-diagram.mjs`，输出到 `.preview/`）。
 
-面板的「参数」页可编辑 CRAP、函数复杂度、函数行数、参数数、行覆盖率、变异杀死率等 12 项质量阈值，以及每个阶段的模型和推理强度。质量阈值保存到会话项目的 `gauntlet.local.json`，仅修改编辑过的字段并保留其他配置；文件在别处更新时会提示冲突。质量改动供之后的工具运行读取，模型改动用于之后新建的 Gauntlet 会话。
+面板的「参数」页可编辑 CRAP、函数复杂度、函数行数、参数数、行覆盖率、变异杀死率等 12 项质量阈值，以及每个阶段的模型和推理强度。质量阈值保存到会话项目的 `.gauntlet/gauntlet.local.json`（老布局的项目是根目录的 `gauntlet.local.json`），仅修改编辑过的字段并保留其他配置；文件在别处更新时会提示冲突。质量改动供之后的工具运行读取，模型改动用于之后新建的 Gauntlet 会话。
 
 质量参数使用会话的项目根目录。如果会话从子目录打开、配置位于父级项目目录，面板会提示以项目根目录打开后编辑，避免生成工具不会读取的本地配置。
 记录可折叠但不会截断；可以加载更早的子会话记录，或直接打开原子会话。回退重做后，下游阶段的旧结果会标成「需重跑」。
 会话历史未完整加载时，面板会注明；可点「加载更早记录」补齐前面的执行详情。
 
 函数详情提供搜索，分别展示 AST / 覆盖率分支复杂度、行覆盖率、CRAP 风险值和变异杀死率，并保留每个变异体、测试、QA、阈值和原始报告。函数变异分数按源码行范围汇总，会注明推导方式；缺少数据时显示「未测量」。
-阶段结束后，插件在 `gauntlet-out/workflow/<callId>/reports.json` 保存当时的指标快照（界面关闭也会保存）。旧执行没有快照时明确说明，不用后续阶段的报告冒充历史数据。面板底部也可查看注明来源的工作区最新报告。
+阶段结束后，插件在 `.gauntlet/out/workflow/<callId>/reports.json` 保存当时的指标快照（界面关闭也会保存）。旧执行没有快照时明确说明，不用后续阶段的报告冒充历史数据。面板底部也可查看注明来源的工作区最新报告。
 快照单个报告限制 4 MiB、整体限制 16 MiB；超限或读取失败会保留错误说明。前台阶段执行才记录完成快照，后台启动确认不视为完成。
 
 ## 每个阶段自己选模型
@@ -160,15 +160,15 @@ flowchart LR
 > 做一个命令行工具，在阿拉伯数字和罗马数字之间互相转换……
 
 Leader 会：建工作分支，先让 `gauntlet_surveyor` 摸底并（第一次接入仓库时）停下来请你确认规则，再依次走规格、编码、清理、加固、QA，
-最后 `gauntlet_reporter` 生成**单文件离线证据包** `gauntlet-out/evidence/index.html` 交给你审阅。你回复"通过"后，Leader 推送分支并开 PR。
+最后 `gauntlet_reporter` 生成**单文件离线证据包** `.gauntlet/out/evidence/index.html` 交给你审阅。你回复"通过"后，Leader 推送分支并开 PR。
 
 ### Windows 上的三个 shell
 
 | 谁执行命令 | Windows | Linux / macOS |
 |---|---|---|
 | agent 自己（shell 工具） | PowerShell | bash |
-| `gauntlet.config.json` 的 `commands` | cmd.exe | /bin/sh |
-| `demo/*.json` 的 `run` | Git Bash | /bin/sh |
+| `.gauntlet/gauntlet.config.json` 的 `commands` | cmd.exe | /bin/sh |
+| `.gauntlet/demo/*.json` 的 `run` | Git Bash | /bin/sh |
 
 技能里的命令都写成一行的 `node .gauntlet/gauntlet.mjs …` / `git …`，在哪个 shell 里都一样；平台相关的逻辑都在 kit 里
 （例如 QA 用的 `leak-check` 代替了只能在 POSIX 下用的 `find -newer`）。
@@ -183,14 +183,32 @@ node ../../kit/gauntlet.mjs gate --profile full
 node ../../kit/gauntlet.mjs evidence --title "保龄球计分"
 ```
 
-然后打开 `gauntlet-out/evidence/index.html`。`examples/roman-kata` 是同一条流水线在「CMake + clang 深度分析」下的样子。
+然后打开 `.gauntlet/out/evidence/index.html`。`examples/roman-kata` 是同一条流水线在「CMake + clang 深度分析」下的样子。
 
 ## 接入任何项目
 
 闸门不认识任何语言、编译器或框架，只认识**标准报告**（JUnit、LCOV/Cobertura、SARIF、编译器告警）。
-项目在 `gauntlet.config.json` 的 `commands` 里写自己平时怎么构建、怎么测试、怎么检查；摸底阶段（`gauntlet_surveyor`）
-会实际跑通并写进项目档案 `GAUNTLET.md`。默认质量标准、棘轮模式（旧代码只收紧不放松）、配置项等细节见
+项目在 `.gauntlet/gauntlet.config.json` 的 `commands` 里写自己平时怎么构建、怎么测试、怎么检查；摸底阶段（`gauntlet_surveyor`）
+会实际跑通并写进项目档案 `.gauntlet/GAUNTLET.md`。默认质量标准、棘轮模式（旧代码只收紧不放松）、配置项等细节见
 各技能和 [`kit/`](kit) 工具，用法都是 `node .gauntlet/gauntlet.mjs <命令>`。
+
+### 小队写的文件只放在 `.gauntlet/`
+
+除了产品代码和项目自己的测试，小队在目标仓库里写的所有东西都在 `.gauntlet/` 一个文件夹里，根目录不会多出别的：
+
+```text
+.gauntlet/
+  gauntlet.mjs lib/ cmake/ …   工具本体（提交）
+  gauntlet.config.json         配置（提交）；gauntlet.local.json 本机覆盖（不提交）
+  GAUNTLET.md                  项目档案
+  architecture.json  quality-accepted.json  mutation-accepted.json  baseline.json   规则文件
+  features/  qa/  demo/  docs/ 验收场景、QA、演示脚本、教程和架构图
+  acceptance/steps/            （cmake-clang）验收步骤定义
+  out/  build/  tmp/           报告与证据包、构建、临时文件（不提交）
+```
+
+Gauntlet 会话里插件设置 `GAUNTLET_LAYOUT=home`，`survey` / `init` 默认就用这个布局；kit 重装只替换工具文件，不碰项目数据。
+根目录已有 `gauntlet.config.json` 的老仓库照常可用，第 0 阶段摸底会把文件迁进 `.gauntlet/`（`gauntlet-survey`「迁进 .gauntlet/」）。
 
 ## 开发
 

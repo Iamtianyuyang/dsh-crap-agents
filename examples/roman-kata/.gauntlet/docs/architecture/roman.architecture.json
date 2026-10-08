@@ -4,7 +4,7 @@
   "meta": {
     "title": "roman：阿拉伯数字 ⇄ 罗马数字",
     "subtitle": "谦卑的 main 只转发 argv；行为在 app 层，规则在 domain 层；测试从应用边界驱动",
-    "output": "gauntlet-out/evidence/diagrams/roman.html",
+    "output": ".gauntlet/out/evidence/diagrams/roman.html",
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/Iamtianyuyang/multica-crap-agents.git",
@@ -119,7 +119,7 @@
       ],
       "sources": [
         {
-          "path": "examples/roman-kata/acceptance/steps/roman_steps.cpp",
+          "path": "examples/roman-kata/.gauntlet/acceptance/steps/roman_steps.cpp",
           "line": 34,
           "end_line": 40,
           "label": "我执行转换"

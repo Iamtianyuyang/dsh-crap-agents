@@ -1,5 +1,5 @@
 {
-  "$comment": "示例项目：cmake-clang 深度分析——仓库里全部 C/C++ 产品代码都被度量（tests/、acceptance/、docs/ 等除外）。",
+  "$comment": "示例项目：cmake-clang 深度分析——仓库里全部 C/C++ 产品代码都被度量（tests/、.gauntlet/ 等除外）。",
   "adapter": "cmake-clang",
   "sources": [
     "**/*.c",

@@ -30,11 +30,13 @@ if (path.resolve(dst).startsWith(path.resolve(src))) {
   process.exit(1);
 }
 
-fs.rmSync(dst, { recursive: true, force: true });
+// 装进去的工具里不需要这个安装器，也不需要同步清单
+const LOCAL_ONLY = ['install-kit.mjs', '.sync.json'];
+// 只替换 kit 自己的条目：.gauntlet/ 里还放着项目的配置、档案、规则和各阶段交接文件，更新时绝不能动
+for (const e of fs.readdirSync(src)) if (!LOCAL_ONLY.includes(e)) fs.rmSync(path.join(dst, e), { recursive: true, force: true });
 fs.cpSync(src, dst, {
   recursive: true,
-  // 装进去的工具里不需要这个安装器，也不需要同步清单
-  filter: (p) => !['install-kit.mjs', '.sync.json'].includes(path.basename(p)),
+  filter: (p) => !LOCAL_ONLY.includes(path.basename(p)),
 });
 const version = fs.readFileSync(path.join(src, 'VERSION'), 'utf8').trim();
 console.log(`installed gauntlet kit ${version} -> ${dst}`);
