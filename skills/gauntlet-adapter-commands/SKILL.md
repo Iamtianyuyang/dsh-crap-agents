@@ -1,153 +1,123 @@
 ---
 name: gauntlet-adapter-commands
-description: Gauntlet toolchain notes — use when adapter in the target repo's .gauntlet/gauntlet.config.json is "commands" or not set (the universal way, any project). How each stage works in a project of any language, compiler, build system or runtime — report contract, toolchain principles, compiler warnings, coverage, acceptance tests named after scenarios, mutation testing, common problems.
+description: Gauntlet 工具链片段——在目标仓库 .gauntlet/gauntlet.config.json 的 adapter 是 "commands" 或没写时使用（通用方式，任何项目）：任何语言、编译器、构建系统和运行环境的项目里每个阶段具体怎么做（报告契约、工具链原则、编译器告警、覆盖率、验收测试按场景名命名、变异测试、常见问题）。
 ---
 
-# The commands adapter (any language)
+# commands 适配器（任何语言）
 
-Stage skills say *what* to do; this skill says *how* in a non-CMake project. Read only your stage's section.
+阶段技能讲"做什么"，本技能讲在非 CMake 项目里"用什么做"。只读你所在阶段的那一节。
 
-The gates do not know languages, only **standard reports**; the project says how to produce them in `commands`
-in `.gauntlet/gauntlet.config.json`:
+闸门不认识语言，只认识**标准报告**；项目在 `.gauntlet/gauntlet.config.json` 的 `commands` 里说明怎么产生它们：
 
-| Gate | Source |
+| 闸门 | 来源 |
 |---|---|
-| `build` | `commands.build` (optional, not needed for interpreted languages); non-zero exit = failure |
-| `tests` | `commands.test.run` runs all tests (unit + acceptance) and writes the JUnit XML listed in `junit` |
-| `acceptance` | every Gherkin scenario needs a passing test **whose name contains the scenario name** |
-| `coverage` / `crap` | the `lcov` or `cobertura` coverage written by `commands.test`; production files the tests never loaded count as 0% |
-| `static` (complexity / length / nesting / parameters) | lizard when installed (~30 languages), else the built-in analyser (C-family + Python) |
-| `warnings` / `tidy` | SARIF from the checkers in `commands.lint` (`gate: "warnings"` feeds the warnings gate, otherwise the `tidy` gate) |
-| `arch` | exit code of `commands.arch` (0 = no violation), optional SARIF |
-| `mutate` | built-in engine (C-family + Python), or the report of an external tool in `commands.mutation` (mutation-testing-report-schema) |
-| test selection | `commands.testSelect`: the same test command but with a `{files}` placeholder for the test files to run (reports as in `commands.test`). Each mutant and each focused `next` round runs only the files the code graph selects; without it every mutant runs the whole suite |
+| `build` | `commands.build`（可选，解释型语言不需要），退出码非 0 = 失败 |
+| `tests` | `commands.test.run` 跑全部测试（单元 + 验收），写出 `junit` 列出的 JUnit XML |
+| `acceptance` | 每个 Gherkin 场景都要有一个**名字包含场景名**的通过的测试 |
+| `coverage` / `crap` | `commands.test` 写出的 `lcov` 或 `cobertura` 覆盖率；测试从没加载过的产品文件按 0% 算 |
+| `static`（复杂度/长度/嵌套/参数） | 装了 lizard 就用 lizard（约 30 种语言），否则内置分析器（C 系语言 + Python） |
+| `warnings` / `tidy` | `commands.lint` 里的检查器输出的 SARIF（`gate: "warnings"` 进告警闸门，默认进 `tidy` 闸门） |
+| `arch` | `commands.arch` 的退出码（0 = 无违规），可选 SARIF |
+| `mutate` | 内置引擎（C 系语言 + Python），或 `commands.mutation` 指定的外部工具报告（mutation-testing-report-schema） |
 
-`{out}` in commands is replaced by the output directory. Without lint / arch configured the gates do not fail, but
-the evidence pack lists them as "needs human confirmation" — if the project already has such tools, configure them.
-Every command is killed after `commandTimeoutMin` minutes (default 60).
+命令里的 `{out}` 会替换成输出目录。没配置 lint / arch 时闸门不失败，但证据包会把它列为"需要人确认"——
+项目里本来就有这类工具时，一定要配上。
 
-## Toolchain principles (any compiler, any runtime)
+## 工具链原则（适用于任何编译器、运行环境）
 
-Gauntlet neither knows nor needs to know the compiler or framework; it only needs the **reports** above. So:
+Gauntlet 不认识也不需要认识具体的编译器或框架，它只要求上表里的**报告**。所以：
 
-1. **Use the toolchain as it is**: whatever compiler, compiler wrapper (MPI, cross-compilers, vendor compilers, …),
-   build system and way of running (multi-process launchers, GPUs, job schedulers, …) the project uses goes into
-   `commands` unchanged. Never switch compilers or change the build to suit Gauntlet.
-2. **Compiler warnings**: no SARIF needed. Nearly every compiler prints `file:line:col: warning: …` or
-   `file(line): warning …`; add a full-build command to lint with `"parse": "diagnostics"` and it feeds the warnings
-   gate: `{ "name": "compiler", "run": "<full build with the project's usual warning flags>", "parse": "diagnostics" }`
-3. **Coverage**: prefer the project compiler's own instrumentation, exported to LCOV or Cobertura with any converter.
-   If the compiler cannot do it, a **measurement-only** coverage build (another compiler, separate build directory)
-   is allowed, but it is a rule change: record it in the profile and the result (`rules: changed`) for a human to
-   confirm; test verdicts still come from the project's own compiler.
-4. **Tests that need a special environment** (multiple processes, a specific machine, GPU, licences, …): put them
-   into `commands.test` as they are; if this environment cannot run them, NEED-HUMAN stating what is missing —
-   never skip them.
-5. **Run-time checks (C, C++, Fortran, CUDA and other languages without memory checking)**: build a **separate**
-   copy with the project compiler's sanitizer flags (and the GPU run-time checker for GPU code) and run the tests;
-   write it as `commands.sanitize`: `{ "name": "asan", "run": "<full build with sanitizer flags + run all tests>" }`.
-   Gauntlet reads the sanitizer reports from the output. If the compiler has no sanitizers, say so in the profile
-   and leave this out.
-6. **No way to produce a standard report**: look for an existing converter in the project's ecosystem first; if
-   there is none, NEED-HUMAN naming the missing report.
+1. **工具链原样使用**：项目用什么编译器、编译器包装器（MPI、交叉编译、厂商编译器……）、构建系统、运行方式
+   （多进程启动器、GPU、作业调度……），`commands` 里就照原样写。不要为了迁就 Gauntlet 换编译器或改构建方式。
+2. **编译器告警**：不用找 SARIF。几乎所有编译器都输出 `文件:行:列: warning: …` 或 `文件(行): warning …`，
+   给 lint 加一条完整编译的命令并写 `"parse": "diagnostics"`，就会进入告警闸门：
+   `{ "name": "compiler", "run": "<完整编译命令，打开项目平时用的告警选项>", "parse": "diagnostics" }`
+3. **覆盖率**：优先用项目编译器自己的插桩，再用任意转换工具导出 LCOV 或 Cobertura。编译器做不到时，
+   可以加一个**只用于度量**的覆盖率构建（另一个编译器、单独的构建目录），但这是规则改动：写进档案和结果（`rules: changed`），由人确认；
+   测试结论仍以项目原本的编译器为准。
+4. **测试需要特殊环境**（多进程、指定机器、GPU、许可证……）：照原样写进 `commands.test`；当前环境跑不了就 NEED-HUMAN，
+   写清缺什么，不要跳过这些测试。
+5. **运行时检查（C、C++、Fortran、CUDA 等不做内存检查的语言）**：用项目的编译器加上它支持的 sanitizer 选项
+   （以及 GPU 代码的运行时检查工具）编一份**单独的**构建并跑测试，写成 `commands.sanitize`：
+   `{ "name": "asan", "run": "<带 sanitizer 选项的完整构建 + 跑全部测试>" }`。Gauntlet 从输出里读 sanitizer 报告；
+   编译器不支持 sanitizer 时在档案里写明，不配这一项。
+6. **找不到能输出标准报告的办法**：先找项目生态里现成的转换工具；还是没有就 NEED-HUMAN，说明缺哪一种报告。
 
-## 0 Survey (Surveyor)
+## 0 摸底（Surveyor）
 
 ```
-node .gauntlet/gauntlet.mjs init --adapter commands   # add --workdir tmp when the requirement wants intermediate files in tmp
+node .gauntlet/gauntlet.mjs init --adapter commands   # 需求要求中间文件放在 tmp 时再加 --workdir tmp
 ```
 
-1. Fill in the draft from survey.md, following the `$examples` in the generated `.gauntlet/gauntlet.config.json`:
-   - `sources`: **all** production code (e.g. `["src/**/*.py"]`, `["cmd/**/*.go", "internal/**/*.go"]`), not just
-     what this requirement touches;
-   - `commands.test`: the project's existing test command plus the flags that write JUnit and coverage, with the
-     report paths in `junit` / `lcov` (or `cobertura`);
-   - `commands.testSelect`: the same command, running only `{files}` — e.g. `node --test … {files}`,
-     `python -m pytest … {files}`, `npx jest … {files}`, `npx vitest run … {files}`. Run it once by hand with one test
-     file to prove it works. **CMake projects tested with ctest** use `{ctest}` instead, plus the build directory:
-     `"testSelect": { "run": "ctest --test-dir tmp/build --output-junit … {ctest}", "ctestDir": "tmp/build" }` — the kit
-     maps the selected test files to ctest test names through CMake's File API and expands `{ctest}` to `-R "<regex>"`.
-     If the test runner cannot select at all (`make check`, …), leave it out and say so in the profile: mutation
-     testing will be slower;
-   - `commands.lint`: the checkers the project already uses (survey.md lists CI commands and existing config files),
-     writing SARIF; for compiled languages add the compiler-warnings entry (toolchain principle 2);
-   - `commands.release`: the build that ships (no coverage / sanitizer flags), e.g. a separate Release build directory.
-     QA, the demos and the `equivalence` gate use it (gauntlet-survey step 7);
-   - `commands.arch`: the ecosystem's module-dependency checker, with a drafted rule file: the core domain does not
-     depend on IO, dependencies point only towards more stable modules. If the ecosystem has no such tool, leave it
-     out and say so in the profile.
-2. `node .gauntlet/gauntlet.mjs doctor` must be all green (every command's program exists, every report path is
-   declared, the code graph is installed).
-3. These are draft rule files: write "rule files drafted: need human confirmation" in the result. You may **not**
-   change an existing config or architecture rules; if they need changing, NEED-HUMAN.
+1. 照 survey.md 的草稿和生成的 `.gauntlet/gauntlet.config.json` 里 `$examples` 的样子填写：
+   - `sources`：**全部**产品代码（例如 `["src/**/*.py"]`、`["cmd/**/*.go", "internal/**/*.go"]`），不是只有本次要改的；
+   - `commands.test`：项目现有的测试命令 + 输出 JUnit 和覆盖率的参数，并在 `junit` / `lcov`（或 `cobertura`）里写出报告路径；
+   - `commands.lint`：项目已经在用的检查器（survey.md 列出了 CI 里跑的命令和已有的配置文件），让它输出 SARIF；
+     编译型语言再加一条编译器告警（见「工具链原则」第 2 条）；
+   - `commands.arch`：项目生态里的模块依赖检查工具，连同它的规则文件一起起草：核心领域不依赖 IO，依赖只能指向更稳定的模块。
+     生态里没有这类工具就不配，在档案里写明。
+2. `node .gauntlet/gauntlet.mjs doctor` 必须全绿（每条命令的程序都存在、报告路径都已声明）。
+3. 这些都是规则文件草稿：结果里写"规则文件草稿：需人工确认"。已经存在的配置和架构规则你**不能**修改；需要改就 NEED-HUMAN。
 
-## 1 Spec (Specifier)
+## 1 规格（Specifier）
 
-Write scenarios in business language. Scenario names must be **unique and stable** — the coder's test names must
-contain them.
+场景按业务语言写即可。场景名要**唯一且稳定**——编码阶段的测试名要包含它。
 
-## 2 Code (Coder)
+## 2 编码（Coder）
 
-- Use the project's own test framework (named in `.gauntlet/GAUNTLET.md`).
-- **Acceptance-test naming contract**: one test per scenario, the test name contains the scenario name, e.g.
+- 用项目自己的测试框架（`.gauntlet/GAUNTLET.md` 里写着）。
+- **验收测试命名契约**：每个场景一个测试，测试名包含场景名，例如
   ```js
-  test('a spare scores the next roll as bonus', () => { /* drive the CLI entry / public API */ });
+  test('补中奖励下一球', () => { /* 通过命令行入口 / 公开 API 驱动 */ });
   ```
-  For a Scenario Outline, one test per Examples row, named with the outline name, in Examples order:
+  场景大纲的每一行 Examples 写一个测试，名字包含大纲名，按 Examples 顺序对应：
   ```js
-  for (const [input, error] of invalid) test(`invalid input is rejected [input=${input}]`, () => { /* ... */ });
+  for (const [input, error] of invalid) test(`非法输入被拒绝 [输入=${input}]`, () => { /* ... */ });
   ```
-  Many BDD frameworks name tests after scenarios by default; if the project already uses one, use it.
-- Unit tests are table-driven too (gauntlet-core section 8), using the framework's parameterisation:
+  很多 BDD 框架默认就按场景名命名测试，项目已经在用的话可以直接用。
+- 单元测试同样表驱动（gauntlet-core 第 8 节），用框架自带的参数化：
   ```js
-  const cases = [['all zeros', Array(20).fill(0), 0], ['all ones', Array(20).fill(1), 20], ['perfect', Array(12).fill(10), 300]];
+  const cases = [['全 0', Array(20).fill(0), 0], ['全 1', Array(20).fill(1), 20], ['满分', Array(12).fill(10), 300]];
   for (const [name, rolls, want] of cases) test(`score [${name}]`, () => assert.equal(score(rolls), want));
   ```
-- Acceptance tests drive the application boundary (CLI entry function, HTTP handler, public API), not internal
-  functions; internal details belong to unit tests.
-- The `ACCEPTANCE` part of `node .gauntlet/gauntlet.mjs test` lists scenarios with no matching test or a failing test.
-- Humble object: the real entry file only forwards arguments; logic lives in testable functions. Whether an entry
-  file is outside `sources` is a human decision — you never change `sources` / `exclude`.
+- 验收测试驱动应用边界（命令行入口函数、HTTP handler、公开 API），不测内部函数；内部细节交给单元测试。
+- `node .gauntlet/gauntlet.mjs test` 的 `ACCEPTANCE` 一栏列出"没有对应测试"和"测试失败"的场景。
+- 谦卑对象：真正的入口文件只转发参数，逻辑放进可测试的函数；
+  入口文件不在 `sources` 里只能由人决定，你不能自己改 `sources` / `exclude`。
 
-## 3 Clean (Cleaner)
+## 3 清理（Cleaner）
 
-| Gate | How to pass it with this adapter |
+| 闸门 | 这个适配器下怎么过 |
 |---|---|
-| `scope` | file status `unsupported` = the built-in analyser does not know the language: after lizard is installed (`pip install lizard`, a human runs it) re-run; otherwise NEED-HUMAN |
-| `warnings` / `tidy` | fix by the rule in the warning / SARIF; only real false positives go into `.gauntlet/quality-accepted.json` (`kind` `warning` / `tidy`, `check` = `tool/rule-id`) |
-| `arch` | invert dependencies according to the architecture tool's output; changing the rule file needs a human |
+| `scope` | 文件状态 `unsupported` = 内置分析器不认识这种语言：装 lizard（`pip install lizard`）后重跑；装不了就 NEED-HUMAN |
+| `warnings` / `tidy` | 按告警 / SARIF 里的规则修；真正的误报才写进 `.gauntlet/quality-accepted.json`（`kind` 用 `warning` / `tidy`，`check` 写 `工具名/规则 id`） |
+| `arch` | 按架构工具的输出做依赖倒置；改规则文件需要人确认 |
 
-- The built-in complexity analyser is heuristic (finds functions by braces or indentation): if the function
-  boundaries in `static.json` are clearly wrong, say so in the result and suggest installing lizard; never contort
-  the code to suit the analyser.
+- 内置复杂度分析器是启发式的（按大括号或缩进找函数）：如果 `static.json` 里的函数边界明显不对，
+  在结果里说明并建议人类安装 lizard，不要为了迁就分析器扭曲代码。
 
-## 4 Harden (Hardener)
+## 4 加固（Hardener）
 
-- By default the built-in mutation engine is used (C-family, Python, Fortran): each mutant runs `commands.build`
-  (if any) and the test command. Files in other languages cannot be mutated by it and the gate **fails** listing
-  them: ask a human to configure an external mutation tool (`commands.mutation`); never work around it.
-  If the tests are slow, ask a human to configure a faster `commands.mutationTest` (no coverage or reports) — you
-  may not change it yourself.
-- Mutation operators: comparison / arithmetic / logical operators (with spaces on both sides), `true/false`
-  (Python `True/False`, `and/or`), `++/--`, negated conditions, integer constant +1.
-- With `commands.mutation` (an external tool writing mutation-testing-report-schema), `mutate` runs that tool and
-  reads its report; mutants the tool marks `Ignored` are listed as "accepted" for human review.
-- Entry-file behaviour: add a smoke test of the real entry point (run it as a child process, assert output and
-  exit code).
+- 默认用内置变异引擎（认识 C 系语言、Python、Fortran）：对每个变异体运行 `commands.build`（如有）和测试命令。
+  其他语言的文件内置引擎没法变异，闸门会**失败**并列出这些文件：请人配置外部变异工具（`commands.mutation`），不要绕过。
+  测试慢时可以请人类配置更快的 `commands.mutationTest`（不带覆盖率和报告），你不能自己改。
+- 变异算子：比较/算术/逻辑运算符（要求两边有空格）、`true/false`（Python `True/False`、`and/or`）、
+  `++/--`、条件取反、整数常量 +1。
+- 配了 `commands.mutation`（输出 mutation-testing-report-schema 报告的外部工具）时，`mutate` 运行该工具并读取它的报告；
+  工具里被 `Ignored` 的变异体会作为"人工接受"列给人类审核。
+- 入口文件的行为：给真实入口加一条冒烟测试（子进程执行，断言输出和退出码）。
 
-## 5 QA / 6 Evidence pack
+## 5 QA / 6 证据包
 
-- The real product is run the way the project normally runs it (the "Build, test, run" section of
-  `.gauntlet/GAUNTLET.md`); QA documents and demo scripts use the same commands.
-- The architecture diagram's `boundaries` use the modules from the architecture tool's rules.
+- 真实产物就是项目平时的运行方式（`.gauntlet/GAUNTLET.md`「构建、测试、运行」一节），QA 文档和 demo 脚本里写同样的命令。
+- 架构图的 `boundaries` 用架构检查工具规则里的模块。
 
-## Common problems
+## 常见问题
 
-| Symptom | Fix |
+| 现象 | 处理 |
 |---|---|
-| `commands.test.junit 未配置` / the test command produced no JUnit report | add the flag that writes JUnit to the test command, with the same path as `junit` (use `{out}/junit.xml`) |
-| `没有覆盖率报告` (no coverage report) | the test command must write LCOV or Cobertura and the path must be in `lcov` / `cobertura` |
-| Coverage paths do not match (every production file at 0%) | paths in the report must resolve relative to the repo root or the command's `cwd`; add `cwd` to the command if needed |
-| On Windows, single quotes reach the program literally | commands run through cmd.exe: use double quotes |
-| A scenario shows "no matching test" | the test name must **contain** the scenario name verbatim (including punctuation); an outline maps to one test per Examples row |
-| `⏱ … killed (commandTimeoutMin)` | a test hangs or the suite is far slower than expected: find it; raising `commandTimeoutMin` is a human decision |
+| `commands.test.junit 未配置` / 测试命令没有产生 JUnit 报告 | 给测试命令加输出 JUnit 的参数，路径与 `junit` 一致（用 `{out}/junit.xml`） |
+| `没有覆盖率报告` | 测试命令要输出 LCOV 或 Cobertura，并在 `lcov` / `cobertura` 写出路径 |
+| 覆盖率里路径对不上（产品文件全是 0%） | 报告里的路径要能相对仓库根目录或命令的 `cwd` 解析；需要时给命令加 `cwd` |
+| Windows 上命令参数里的单引号原样传进了程序 | 命令通过 cmd.exe 执行，引号用双引号 |
+| 某个场景显示"没有对应的测试" | 测试名必须**包含**场景名（逐字一致，含标点）；大纲按 Examples 行数对应多个测试 |
