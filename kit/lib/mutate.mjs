@@ -318,7 +318,11 @@ export async function mutateWith(cfg, opts, exec) {
     for (let k = 0; k < mutants.length; k++) {
       const m = mutants[k];
       const fileHits = exec.hits?.get(m.file);
-      const knownUncovered = exec.hits && (fileHits ? !((fileHits.get(m.line) || 0) > 0) : exec.missingFileIsUncovered);
+      // A line missing from a file's coverage report is a compile-time-only line (a const expression with no
+      // runtime instruction position): the tests do run the code around it, so mutate it and really run the
+      // tests. Only a line the report lists with 0 hits is a real hole. A file with no report at all is
+      // covered by missingFileIsUncovered (uninstrumented code is always mutated and tested for real).
+      const knownUncovered = exec.hits && (fileHits ? fileHits.get(m.line) === 0 : exec.missingFileIsUncovered);
       let status;
       let cached = false;
       const acc = acceptedBy(m, lineText(cfg, m.file, m.line));

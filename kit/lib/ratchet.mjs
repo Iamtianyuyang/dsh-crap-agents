@@ -31,9 +31,49 @@ function multiset(keys) {
   return m;
 }
 
-/** Current debt, read from the gate outputs (static / crap / tidy / duplication / arch json). */
+/** Reject incomplete measurements, not measured quality debt (pass:false is valid debt). */
+export function validateBaselineReports(cfg) {
+  const fail = (message) => { throw new Error(`baseline: ${message}; run gate --profile quality / hardener / full first`); };
+  const read = (name) => {
+    try { return readJson(cfg.out(name), null); }
+    catch (e) { fail(`${name}: ${e.message}`); }
+  };
+  const last = read('gate.json');
+  const start = Date.parse(last?.startedAt), end = Date.parse(last?.finishedAt);
+  const need = ['scope', 'complexity', 'warnings', 'tidy', 'duplication', 'crap', 'coverage', 'arch'];
+  if (!last || !Number.isFinite(start) || !Number.isFinite(end) || end < start) fail('missing/invalid gate run');
+  for (const name of need) if (typeof last.gates?.[name]?.pass !== 'boolean') fail(`missing gate ${name}`);
+  for (const [name, g] of Object.entries(last.gates || {})) {
+    if (g.error) fail(`gate ${name}: ${g.error}`);
+    if (['build', 'tests'].includes(name) && !g.pass) fail(`gate ${name} failed`);
+  }
+  const shapes = {
+    'static.json': ['functions', 'warnings', 'files', 'failed'],
+    'crap.json': ['functions', 'files'],
+    'tidy.json': ['findings'],
+    'duplication.json': ['clones'],
+    'arch.json': ['violations'],
+  };
+  if (last.gates.cppcheck) shapes['cppcheck.json'] = ['findings'];
+  const reports = {};
+  for (const [name, arrays] of Object.entries(shapes)) {
+    const report = read(name);
+    if (!report || report.error || arrays.some((a) => !Array.isArray(report[a]))) fail(`missing/failed/invalid ${name}`);
+    // Compare filesystem timestamps with this run, including an upper bound: a
+    // later standalone report cannot be mixed into an older gate snapshot.
+    const mtime = fs.statSync(cfg.out(name)).mtimeMs;
+    if (mtime < start || mtime > end + 1) fail(`stale ${name}`);
+    reports[name] = report;
+  }
+  const ratio = reports['duplication.json'].summary?.ratio;
+  if (!Number.isFinite(ratio) || ratio < 0 || ratio > 1) fail('invalid duplication.json ratio');
+  return { last, reports };
+}
+
+/** Current debt, read only from a complete, fresh quality gate run. */
 export function snapshot(cfg) {
-  const o = (f) => readJson(cfg.out(f), null);
+  const { last, reports } = validateBaselineReports(cfg);
+  const o = (f) => reports[f] || null;
   const th = cfg.thresholds;
   const stat = o('static.json'), crap = o('crap.json'), tidy = o('tidy.json'), dup = o('duplication.json'), arch = o('arch.json'), cpp = o('cppcheck.json');
   const functions = {};
@@ -51,7 +91,7 @@ export function snapshot(cfg) {
   return {
     version: 1,
     createdAt: new Date().toISOString(),
-    commit: readJson(cfg.out('gate.json'), {}).commit || null,
+    commit: last.commit || null,
     functions,
     coverage,
     findings: multiset([
@@ -60,7 +100,7 @@ export function snapshot(cfg) {
       ...(cpp?.findings || []).filter((f) => !f.accepted).map((f) => msgKey('cppcheck', f)),
     ]),
     clones: multiset((dup?.clones || []).filter((c) => !c.accepted).map(cloneKey)),
-    duplicationRatio: dup?.summary?.ratio ?? 0,
+    duplicationRatio: dup.summary.ratio,
     unanalyzed: [...(stat?.files || []).filter((f) => f.status !== 'ok' && f.status !== 'accepted').map((f) => f.file), ...(stat?.failed || []).map((f) => f.file)].filter((v, i, a) => a.indexOf(v) === i).sort(),
     arch: multiset((arch?.violations || []).map(archKey)),
   };

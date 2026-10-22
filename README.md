@@ -212,14 +212,8 @@ Gauntlet 会话里插件设置 `GAUNTLET_LAYOUT=home`，`survey` / `init` 默认
 
 ## 开发
 
-- **`kit/` 不在本仓库里直接修改。** 它是上游 multica-crap-agents 的 kit 的副本：改动先做到上游，再同步过来：
-
-  ```bash
-  node scripts/sync-kit.mjs ../multica-crap-agents
-  ```
-
-  `kit/.sync.json` 记录上次同步时每个文件的哈希；本仓库的 `kit/` 被直接改过时，同步会拒绝并列出文件。
-  `kit/install-kit.mjs` 是本插件独有的，同步时保留。
+- **`kit/` 在本仓库维护，直接修改。** 它是 Gauntlet 工具的本体；[multica-crap-agents](https://github.com/Iamtianyuyang/multica-crap-agents) 用 `scripts/sync-kit.mjs` 从这里同步，那边不直接改 kit。
+  `kit/install-kit.mjs` 是本插件独有的，同步到 multica 时跳过。
 - **preset 是照 dsh 的 `standard` 模式抄的**（去掉了计划模式和通用委派工具）。升级 dsh 时对照新版 `dsh-web-app/presets/standard.patch.yml`
   更新 [`lib/preset.js`](lib/preset.js)，并同步改 `package.json` 里锁定的 dsh 版本。
 - 设置页和流程进度面板 [`lib/client.js`](lib/client.js) 是手写的 dsh 客户端模块，没有构建步骤；阶段 key 要和 [`lib/stages.js`](lib/stages.js) 一致。
@@ -235,8 +229,7 @@ lib/stages.js            7 个阶段子 agent：工具名、技能、persona
 lib/client.js            客户端界面：阶段模型设置 + 主会话流程进度与阶段详情
 prompts/leader.md        Leader 的编排协议（就是 Leader 的系统提示）
 skills/gauntlet-*/       10 个技能：共同规则 + 每个阶段做什么 + 两个工具链片段（只在这个模式里注册）
-kit/                     Gauntlet 工具本体（零依赖 Node ESM，从上游同步）+ install-kit.mjs
-scripts/sync-kit.mjs     从上游同步 kit/
+kit/                     Gauntlet 工具本体（零依赖 Node ESM，在本仓库维护）+ install-kit.mjs
 examples/bowling-js/     通用方式示例（JavaScript，零依赖）
 examples/roman-kata/     CMake + clang 深度分析示例（C++），含录像、教程、架构图
 ```
@@ -254,5 +247,5 @@ examples/roman-kata/     CMake + clang 深度分析示例（C++），含录像�
 
 - **Robert C. Martin（Bob 大叔）**：验收测试即需求、TDD、CRAP、变异测试、"不读 AI 的代码，读证据"的整套思路。
 - **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)**：Cordis 插件体系、Agent 预设、技能子系统与子代理机制，让这支小队能装进来自动跑。
-- **[multica-crap-agents](https://github.com/Iamtianyuyang/multica-crap-agents)**：本插件的上游（Multica 版）。
+- **[multica-crap-agents](https://github.com/Iamtianyuyang/multica-crap-agents)**：Multica 平台版本；kit 在本仓库维护，multica 从这里同步。
 - **[Archify](https://github.com/tt-a1i/archify)**、**[lizard](https://github.com/terryyin/lizard)**、**[Stryker mutation-testing-elements](https://github.com/stryker-mutator/mutation-testing-elements)**：架构图、多语言复杂度分析、通用变异测试报告格式。

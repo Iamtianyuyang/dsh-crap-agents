@@ -53,7 +53,9 @@ export function findClones(files, minTokens) {
     return true;
   };
   // pairs of matching windows, then grow each pair into a maximal clone
-  const covered = new Set();
+  // A diagonal identifies a file pair and token-offset difference. Store inclusive
+  // window-start intervals rather than one string key per matching token window.
+  const covered = new Map();
   const clones = [];
   const dupLines = files.map(() => new Set());
   for (const occ of windows.values()) {
@@ -61,14 +63,16 @@ export function findClones(files, minTokens) {
     for (let x = 0; x < occ.length; x++) for (let y = x + 1; y < occ.length; y++) {
       const [a, b] = [occ[x], occ[y]];
       if (a[0] === b[0] && Math.abs(a[1] - b[1]) < minTokens) continue; // overlapping self-match
-      const key = `${a[0]}:${a[1]}|${b[0]}:${b[1]}`;
-      if (covered.has(key) || !same(a, b)) continue;
+      const key = `${a[0]}|${b[0]}|${b[1] - a[1]}`;
+      const intervals = covered.get(key) || [];
+      if (intervals.some(([start, end]) => start <= a[1] && a[1] <= end) || !same(a, b)) continue;
       let s = 0;
       while (a[1] - s - 1 >= 0 && b[1] - s - 1 >= 0 && files[a[0]].hs[a[1] - s - 1] === files[b[0]].hs[b[1] - s - 1]) s++;
       let e = minTokens;
       while (a[1] + e < files[a[0]].hs.length && b[1] + e < files[b[0]].hs.length && files[a[0]].hs[a[1] + e] === files[b[0]].hs[b[1] + e]) e++;
       const ia = a[1] - s, ib = b[1] - s, len = e + s;
-      for (let k = 0; k + minTokens <= len; k++) covered.add(`${a[0]}:${ia + k}|${b[0]}:${ib + k}`);
+      intervals.push([ia, ia + len - minTokens]);
+      covered.set(key, intervals);
       const ta = files[a[0]].tokens, tb = files[b[0]].tokens;
       const ra = { file: files[a[0]].file, start: ta[ia].line, end: ta[ia + len - 1].line };
       const rb = { file: files[b[0]].file, start: tb[ib].line, end: tb[ib + len - 1].line };
