@@ -3,7 +3,7 @@
 //   bash:       node "$DSH_GAUNTLET_KIT_DIR/install-kit.mjs" [target-repo-dir]
 //   PowerShell: node "$env:DSH_GAUNTLET_KIT_DIR/install-kit.mjs" [target-repo-dir]
 // 与 scripts/install-kit.mjs 等价，但以 kit 自身为源，供 dsh 插件离线调用。
-// 本文件是插件独有的（上游 kit 没有），scripts/sync-kit.mjs 同步时会保留它。
+// 本文件是本插件独有的：multica-crap-agents 从本仓库同步 kit/ 时会跳过它。
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

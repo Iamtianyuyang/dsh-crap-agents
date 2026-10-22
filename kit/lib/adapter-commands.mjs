@@ -56,8 +56,14 @@ export function shell(cfg, spec, { quiet = false, timeoutMs = 0 } = {}) {
       env: { ...process.env, GAUNTLET_OUT: cfg.out(), GAUNTLET_ROOT: cfg.root, ...Object.fromEntries(Object.entries(s.env || {}).map(([k, v]) => [k, subst(cfg, v, cwd)])) },
     });
     let stdout = '', stderr = '', timedOut = false;
-    child.stdout.on('data', (d) => { stdout += d; if (!quiet) process.stdout.write(d); });
-    child.stderr.on('data', (d) => { stderr += d; if (!quiet) process.stderr.write(d); });
+    // Keep only a bounded tail: a runaway command (a mutant that makes every frame assert, then pumps until
+    // the timeout) can print gigabytes, and an unbounded accumulator dies with "RangeError: Invalid string
+    // length" and takes the whole kit process down. Every caller reads the tail (tail(), diagnostics), so
+    // dropping old lines keeps the same behaviour with bounded memory.
+    const CAPTURE_MAX = 2e6;
+    const keepTail = (buf, chunk) => { const s = buf + chunk; return s.length <= CAPTURE_MAX ? s : s.slice(-CAPTURE_MAX); };
+    child.stdout.on('data', (d) => { stdout = keepTail(stdout, d); if (!quiet) process.stdout.write(d); });
+    child.stderr.on('data', (d) => { stderr = keepTail(stderr, d); if (!quiet) process.stderr.write(d); });
     const timer = timeoutMs ? setTimeout(() => { timedOut = true; killTree(child.pid); }, timeoutMs) : null;
     const done = (code, extra = '') => { if (timer) clearTimeout(timer); resolve({ code, stdout, stderr: stderr + extra, timedOut, ms: Date.now() - t0 }); };
     child.on('error', (e) => done(127, e.message));
