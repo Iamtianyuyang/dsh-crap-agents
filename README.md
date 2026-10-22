@@ -217,7 +217,7 @@ Gauntlet 会话里插件设置 `GAUNTLET_LAYOUT=home`，`survey` / `init` 默认
 - **preset 是照 dsh 的 `standard` 模式抄的**（去掉了计划模式和通用委派工具）。升级 dsh 时对照新版 `dsh-web-app/presets/standard.patch.yml`
   更新 [`lib/preset.js`](lib/preset.js)，并同步改 `package.json` 里锁定的 dsh 版本。
   dsh 0.2.1 起子代理的 persona / 工具组合必须做成独立 Agent preset 再用 `agentPreset` 选中，所以本插件声明 1 + 7 份 preset
-  （Leader + 每个阶段一份），阶段 preset 不带 name、不出现在选择器里。
+  （Leader + 每个阶段一份）。preset 选择器没有隐藏机制，阶段 preset 也会列出，name / description 已标明"内部阶段、由 Leader 委派、别直接选"。
 - 设置页和流程进度面板 [`lib/client.js`](lib/client.js) 是手写的 dsh 客户端模块，没有构建步骤；阶段 key 要和 [`lib/stages.js`](lib/stages.js) 一致。
 
 ## 仓库结构
