@@ -216,6 +216,8 @@ Gauntlet 会话里插件设置 `GAUNTLET_LAYOUT=home`，`survey` / `init` 默认
   `kit/install-kit.mjs` 是本插件独有的，同步到 multica 时跳过。
 - **preset 是照 dsh 的 `standard` 模式抄的**（去掉了计划模式和通用委派工具）。升级 dsh 时对照新版 `dsh-web-app/presets/standard.patch.yml`
   更新 [`lib/preset.js`](lib/preset.js)，并同步改 `package.json` 里锁定的 dsh 版本。
+  dsh 0.2.1 起子代理的 persona / 工具组合必须做成独立 Agent preset 再用 `agentPreset` 选中，所以本插件声明 1 + 7 份 preset
+  （Leader + 每个阶段一份）。preset 选择器没有隐藏机制，阶段 preset 也会列出，name / description 已标明"内部阶段、由 Leader 委派、别直接选"。
 - 设置页和流程进度面板 [`lib/client.js`](lib/client.js) 是手写的 dsh 客户端模块，没有构建步骤；阶段 key 要和 [`lib/stages.js`](lib/stages.js) 一致。
 
 ## 仓库结构
@@ -224,7 +226,7 @@ Gauntlet 会话里插件设置 `GAUNTLET_LAYOUT=home`，`survey` / `init` 默认
 package.json             dsh 插件清单（dsh.bundle.patch / dsh.client / dsh.install / dshTarget）
 cordis.patch.yml         bundle patch：只挂插件服务这一行（id: gauntlet）
 lib/index.js             Cordis 插件入口：声明 preset、每阶段模型配置、DSH_GAUNTLET_KIT_DIR
-lib/preset.js            「Gauntlet 小队」preset 的组成（基于 dsh standard 模式）
+lib/preset.js            「Gauntlet 小队」preset 的组成（基于 dsh standard 模式；Leader + 7 份阶段 preset）
 lib/stages.js            7 个阶段子 agent：工具名、技能、persona
 lib/client.js            客户端界面：阶段模型设置 + 主会话流程进度与阶段详情
 prompts/leader.md        Leader 的编排协议（就是 Leader 的系统提示）
