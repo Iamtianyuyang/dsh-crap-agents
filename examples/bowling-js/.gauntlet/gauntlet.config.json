@@ -1,0 +1,45 @@
+{
+  "$comment": "示例项目：commands 适配器（纯 JavaScript，node:test，零依赖）。测试命令输出 JUnit + LCOV，闸门只读这两份标准报告。",
+  "adapter": "commands",
+  "sources": [
+    "src/**/*.js"
+  ],
+  "commands": {
+    "test": {
+      "run": "node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination={out}/junit.xml --test-reporter=lcov --test-reporter-destination={out}/lcov.info",
+      "junit": [
+        "{out}/junit.xml"
+      ],
+      "lcov": [
+        "{out}/lcov.info"
+      ]
+    },
+    "mutationTest": "node --test --test-reporter=dot",
+    "lint": [
+      {
+        "name": "node --check",
+        "run": "node --check src/domain/game.js && node --check src/app/cli.js",
+        "gate": "warnings"
+      }
+    ]
+  },
+  "thresholds": {
+    "crapMax": 8,
+    "complexityMax": 10,
+    "functionLinesMax": 60,
+    "nestingMax": 4,
+    "paramsMax": 7,
+    "lineCoverageMin": 0.9,
+    "mutationScoreMin": 1,
+    "duplicationMax": 0.03,
+    "warningsMax": 0,
+    "tidyMax": 0,
+    "staticScopeMin": 1
+  },
+  "mutation": {
+    "scope": "all",
+    "maxMutants": 0,
+    "timeoutFactor": 3,
+    "minTimeoutSec": 10
+  }
+}

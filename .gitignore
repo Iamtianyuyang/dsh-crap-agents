@@ -1,0 +1,5 @@
+dist/
+.gauntlet-bootstrap/
+node_modules/
+.claude/
+.preview/

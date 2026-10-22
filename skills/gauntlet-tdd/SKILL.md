@@ -1,51 +1,44 @@
 ---
 name: gauntlet-tdd
-description: Gauntlet stage 2 (Coder) — implement the feature with TDD (acceptance tests, unit tests and the least production code) until every Gherkin scenario and unit test passes. Test frameworks and how to write the tests are in the current adapter skill (gauntlet-adapter-cmake / gauntlet-adapter-commands).
+description: Gauntlet 第 2 阶段（Coder）：用 TDD 实现功能——验收测试、单元测试和最少的产品代码，让全部 Gherkin 场景和单元测试通过。具体的测试框架和写法见当前适配器的技能（gauntlet-adapter-cmake / gauntlet-adapter-commands）。
 ---
 
-# Code stage (Coder)
+# 编码阶段（Coder）
 
-One goal only: **make every acceptance scenario and unit test green.** Clean code is the next stage's job, but do
-not write a mess on purpose — small functions and good names are free.
+目标只有一个：**让所有验收场景和单元测试变绿**。代码干不干净是下一阶段的事，
+但不要故意写乱——小函数、好名字是免费的。
 
-**First look at `adapter` in `.gauntlet/gauntlet.config.json`**, then read the "2 Code" section of the matching
-adapter skill: `commands` (or not set) → gauntlet-adapter-commands; `cmake-clang` → gauntlet-adapter-cmake. It
-explains how to write acceptance tests, which unit-test framework to use and the skeleton for a new project.
+**先看 `.gauntlet/gauntlet.config.json` 的 `adapter`**，再读对应适配器技能的「2 编码」一节：
+`commands`（或没写）→ gauntlet-adapter-commands；`cmake-clang` → gauntlet-adapter-cmake。
+那里写着验收测试怎么写、用什么单元测试框架、新项目的工程骨架。
 
-## The three laws of TDD (Uncle Bob)
+## TDD 三定律（Bob 大叔）
 
-1. Write no production code without a failing test.
-2. Write only enough of a test to fail (not compiling counts as failing).
-3. Write only enough production code to pass the currently failing test.
+1. 没有失败的测试，不写产品代码。
+2. 测试只写到"失败"为止（编译失败也算失败）。
+3. 产品代码只写到"让当前失败的测试通过"为止。
 
-The cycle: red → green → small refactor → red again. A few minutes per cycle.
+循环：红 → 绿 → 小重构 → 再红。每个循环几分钟。
 
-## Steps
+## 步骤
 
-1. Read the task and confirm the branch (gauntlet-core sections 1 and 2).
-2. `node .gauntlet/gauntlet.mjs next --profile coder --reset` for the overview: which scenarios lack an acceptance
-   test, which tests fail.
-3. Work scenario by scenario:
-   - write this scenario's acceptance test (it drives the application boundary; see the adapter skill) — red
-   - when you need a new class / function, write its unit test first (red)
-   - write the least production code (green)
-   - `node .gauntlet/gauntlet.mjs test` for the overall picture; commit when green
-4. Loop with `next --profile coder` (gauntlet-core section 7) until DONE (or finish on STALLED / BUDGET as in
-   section 6).
-5. Commit and finish (gauntlet-core section 6).
+1. 按 gauntlet-core 读任务、切分支（分支已由规格阶段创建）。
+2. `node .gauntlet/gauntlet.mjs next --profile coder --reset` 看全貌：哪些场景还没有验收测试、哪些测试失败。
+3. 一个场景一个场景地推进：
+   - 写这个场景的验收测试（驱动应用边界，写法见适配器技能）——红
+   - 需要新的类/函数时，先写单元测试（红）
+   - 写最少的产品代码（绿）
+   - `node .gauntlet/gauntlet.mjs test` 看整体情况
+4. 用 `next --profile coder` 循环（gauntlet-core 第 7 节），直到 DONE。
+5. 提交、推送、收尾（gauntlet-core 第 6 节）。
 
-## Design points
+## 设计要点
 
-- **Acceptance tests drive the application boundary** (CLI entry, HTTP handler, public API), not internal details;
-  internal details belong to unit tests.
-- **Humble object**: the program entry, real IO and GUI event loops only forward; behaviour lives in testable
-  functions (output streams, clocks, the filesystem are injected as parameters). Whether an entry file may be
-  excluded from `sources` is a **human** decision — you never change `sources` / `exclude`.
-- **New logic goes into new functions; old functions only get the call.** An old function you change may grow by at
-  most +2 complexity and +20 lines (gauntlet-core section 4); a bigger addition would force a rewrite of old code.
-  Small new functions in a new or existing module keep the change reviewable and are judged on their own.
-- Never make production code check "am I running under test?" to pass a test.
-- Scenario wording is the requirement: steps / test names match the scenarios verbatim; never change a scenario to
-  suit the code.
-- Unit tests are table-driven (gauntlet-core section 8): several inputs/outputs of one function are one table + one
-  test; TDD's "red again" is usually a new row, not a new test function.
+- **验收测试驱动应用边界**（命令行入口、HTTP handler、公开 API），不测内部细节；内部细节交给单元测试。
+- **谦卑对象（Humble Object）**：程序入口、真实 IO、GUI 事件循环只做转发；
+  行为都放在可测试的函数里（输出流、时钟、文件系统通过参数注入）。
+  入口文件能否从 `sources` 里排除只能由**人类**决定，你不能自己改 `sources` / `exclude`。
+- 不要为了让测试通过而在产品代码里判断"是否在测试中"。
+- 场景措辞是需求：步骤 / 测试名与场景逐字对应，不要改场景去迁就代码。
+- 单元测试写成表驱动（gauntlet-core 第 8 节）：同一个函数的多组输入输出是一张表 + 一个测试；
+  TDD 的"再红"往往就是往表里加一行，而不是再写一个测试函数。
