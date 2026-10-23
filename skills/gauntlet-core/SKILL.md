@@ -1,214 +1,346 @@
 ---
 name: gauntlet-core
-description: Gauntlet 流水线的共同规则（Gauntlet 小队每个成员必读）：工具安装、闸门命令、分支协议、结果汇报格式、禁止事项。处理任何 Gauntlet 工作前先读它。
+description: Shared rules of the Gauntlet pipeline (required reading for every Gauntlet squad member) — installing the tools, gate commands, branch protocol, result format, the incremental loop and what is forbidden. Read it before any Gauntlet work.
 ---
 
-# Gauntlet 共同规则（DeepSeek Harness 版）
+# Gauntlet shared rules (DeepSeek Harness edition)
 
-这条流水线来自 Bob 大叔（Robert C. Martin）的方法：
-**人不读 AI 写的代码，人读证据。** 代码的可信度来自层层闸门：验收测试 → 单元测试 →
-CRAP（复杂度 × 未测试）→ 变异测试 → 架构边界 → QA。
+This pipeline follows Uncle Bob (Robert C. Martin): **humans do not read AI-written code, they read evidence.**
+Trust in the code comes from layered gates: acceptance tests → unit tests → CRAP (complexity × untested)
+→ mutation testing → architecture boundaries → QA.
 
-你是 Gauntlet 小队的一个**阶段子 agent**。Leader（编排者）把需求按阶段派给 7 个子 agent，你只干委派给你的那一个阶段：
-按任务提示 + 你的阶段技能做事，跑到闸门通过，再把结果交回 Leader。你看不到 Leader 和用户的对话，也不直接问用户——
-需要人决定的事以 NEED-HUMAN 交回 Leader（第 6 节）。
-每个阶段"做什么"见对应的阶段技能；"用什么工具、怎么写"见适配器技能。
-只读和当前工作有关的文件——上下文越长越容易犯错（"lost in the middle"）。
+You are one **stage sub-agent** of the Gauntlet squad. The Leader (orchestrator) hands the requirement to 7 sub-agents,
+one stage each; you do only the stage you were given: follow the task prompt and your stage skill, iterate until the
+gates pass, then hand the result back to the Leader. You cannot see the conversation between the Leader and the user
+and you never ask the user directly — anything a human must decide goes back to the Leader as NEED-HUMAN (section 6).
+*What* a stage does is in its stage skill; *which tools and how* is in the adapter skill.
+Read only the files relevant to the current work — the longer the context, the more mistakes ("lost in the middle").
 
-## 1. 需求从哪里来
+## 1. Where the requirement comes from
 
-需求就是**用户给出的原始需求**，Leader 把它原文贴在委派给你的任务提示里（还有分支、你的阶段和返工说明）。开工前先确认你理解了：
-目标、输入输出、边界、是否要求与某个原程序行为一致（重构 / 移植 / 合并类任务）。不确定就以 NEED-HUMAN 收尾说明，别猜。
+The requirement is **the user's original request**; the Leader pastes it verbatim into your task prompt (together with
+the branch, your stage and the rework note). Before starting, make sure you understand the goal, inputs/outputs,
+boundaries, and whether behaviour must match an existing program (refactor / port / merge tasks).
+If anything is unclear, finish with NEED-HUMAN — do not guess.
 
-切到仓库后，先读项目档案 `.gauntlet/GAUNTLET.md`（第 0 阶段摸底写的：怎么构建 / 测试 / 运行、代码地图、约定、坑）。
-档案和你看到的事实不符时，以 FAIL 收尾并说明，由 Leader 安排回到第 0 阶段重新摸底，不要凭记忆往下做。
+In the repository, first read the project profile `.gauntlet/GAUNTLET.md` (written by the stage-0 survey: how to
+build / test / run, code map, conventions, pitfalls). If the profile contradicts what you see, finish with FAIL and
+say so; the Leader sends the work back to stage 0. Do not carry on from memory.
 
-## 2. 代码仓库与分支协议
+## 2. Repository and branch protocol
 
-1. 你在目标仓库里工作，Leader 已经建好并切到了分支 `gauntlet/<短名>`（任务提示里写着）。先 `git status` 确认。
-   默认分支以 `.gauntlet/GAUNTLET.md` 的 `base:`、或远端默认分支为准；闸门的"改动行"是相对它计算的。
-2. 提交信息带上阶段标签，例如：`[code] add roman parser`、`[clean] extract scorer`。
-3. **每次测试变绿就提交一次。** 你随时可能被中断（取消、token 上限、dsh 重启），没提交的改动就丢了；
-   被重新派来时，先 `git status` / `git log --oneline` 看清已有进度，从那里继续。
-4. **不要** `git push`、不要开 PR——Leader 在用户审阅通过后才推送。**不要**在默认分支上提交，**不要** force push。
+1. You work in the target repository; the Leader has created and checked out `gauntlet/<short-name>` (it is in the
+   task prompt). Confirm with `git status`. The default branch is `base:` in `.gauntlet/GAUNTLET.md` or the remote's
+   default branch; "changed lines" in the gates are computed against it.
+2. Commit messages carry a stage tag, e.g. `[code] add roman parser`, `[clean] extract scorer`.
+3. **Commit every time the tests go green.** You can be interrupted at any moment (cancelled, token limit, dsh
+   restart) and uncommitted work is lost. When you are dispatched again, run `git status` / `git log --oneline`
+   first and continue from there.
+4. **Never** `git push` or open a PR — the Leader pushes after the user approves. **Never** commit on the default
+   branch, **never** force-push.
 
-## 3. 工具（.gauntlet/）与 shell
+## 3. Tools (.gauntlet/) and shells
 
-### 安装 / 更新
+### Install / update
 
-本插件自带工具本体，环境变量 `DSH_GAUNTLET_KIT_DIR` 指向它（你的 persona 里写了你这个 shell 的写法）。
-把工具装进目标仓库（一次即可，离线）：
+The plugin ships the tool kit; the environment variable `DSH_GAUNTLET_KIT_DIR` points to it (your persona shows
+how to write it in your shell). Install it into the target repository (once, offline):
 
-- PowerShell：`node "$env:DSH_GAUNTLET_KIT_DIR/install-kit.mjs" .`
-- bash：`node "$DSH_GAUNTLET_KIT_DIR/install-kit.mjs" .`
+- PowerShell: `node "$env:DSH_GAUNTLET_KIT_DIR/install-kit.mjs" .`
+- bash: `node "$DSH_GAUNTLET_KIT_DIR/install-kit.mjs" .`
 
-仓库里已经有 `.gauntlet/gauntlet.mjs`（上次装过并提交了）就直接用，不必重装；第 0 阶段摸底会把它提交进仓库。
-变量是空的（插件没正常加载）时，才去仓库里已有的 `.gauntlet/` 找，仍然找不到就以 NEED-HUMAN 收尾。
+If the repository already has `.gauntlet/gauntlet.mjs` (installed and committed earlier), just use it; the stage-0
+survey commits it. Only when the variable is empty (the plugin did not load) look for an existing `.gauntlet/`;
+if there is none, finish with NEED-HUMAN.
 
-然后检查工具链：`node .gauntlet/gauntlet.mjs doctor`
+Then check the toolchain: `node .gauntlet/gauntlet.mjs doctor`
 
-（需要哪些工具由适配器决定，见对应适配器技能。）缺工具时**不要**自己改闸门绕过，也不要自己去装（会被拒绝）：
-以 NEED-HUMAN 收尾，写出确切的安装命令（第 6 节）。
+Which tools are needed depends on the adapter (see the adapter skill). Both adapters **require** the code-graph tool
+codebase-memory-mcp (the `code graph` line of `doctor`; `next`, `mutate` and `graph` stop with an error without it).
+When a tool is missing, do **not** work around the gate and do **not** install it yourself (it will be denied):
+finish with NEED-HUMAN and give the exact install command (section 6). For the code graph that is
+`npm install -g codebase-memory-mcp`.
 
-### 三个 shell（Windows 上尤其要分清）
+### Three shells (keep them apart, especially on Windows)
 
-| 谁执行命令 | Windows | Linux / macOS |
+| Who runs the command | Windows | Linux / macOS |
 |---|---|---|
-| 你自己（shell 工具） | PowerShell | bash |
-| `.gauntlet/gauntlet.config.json` 的 `commands`（kit 交给系统 shell） | **cmd.exe** | /bin/sh |
-| `.gauntlet/demo/*.json` 的 `run` | Git Bash（找不到时 cmd.exe） | /bin/sh |
+| You (your shell tool) | PowerShell | bash |
+| `commands` in `.gauntlet/gauntlet.config.json` (the kit hands them to the system shell) | **cmd.exe** | /bin/sh |
+| `run` in `.gauntlet/demo/*.json` | Git Bash (cmd.exe if missing) | /bin/sh |
 
-- 技能里的命令都写成**一行**的 `node .gauntlet/gauntlet.mjs …` 或 `git …`，在任何 shell 里照抄即可。
-  不要自己加 shell 专属语法（`\` 续行、`2>/dev/null`、`$(…)`、`find`、`grep`……）；需要的平台相关逻辑都在 kit 命令里。
-- 写进 `commands` 的命令要能在 cmd.exe 里跑：参数用双引号、不用 bash 才有的写法；写之前用 `test` 等命令实际跑通。
+- Commands in the skills are **one-line** `node .gauntlet/gauntlet.mjs …` or `git …` and work as-is in any shell.
+  Do not add shell-specific syntax (`\` continuations, `2>/dev/null`, `$(…)`, `find`, `grep`, …); platform logic
+  lives inside the kit commands.
+- Commands written into `commands` must run in cmd.exe: double quotes, no bash-only syntax. Run them for real
+  (`test`, …) before relying on them.
+- Every configured build / test / lint command, and every ctest test, is killed after `commandTimeoutMin`
+  (default 60) minutes. A timeout fails the gate with "⏱ … killed": find the hanging test instead of retrying.
 
-### 文件放哪里：只放进 `.gauntlet/`
+### Where files go: only into `.gauntlet/`
 
-除了产品代码和项目自己的测试，Gauntlet 在仓库里写的**所有**文件都在 `.gauntlet/` 这一个文件夹里，仓库根目录不多出别的文件或目录：
+Apart from production code and the project's own tests, **everything** Gauntlet writes lives in the single folder
+`.gauntlet/`; nothing else appears at the repository root:
 
-| 内容 | 位置 | 提交 |
+| Content | Location | Committed |
 |---|---|---|
-| 工具本体 | `.gauntlet/gauntlet.mjs`、`.gauntlet/lib/` 等 | 是 |
-| 配置 / 本机覆盖 | `.gauntlet/gauntlet.config.json` / `.gauntlet/gauntlet.local.json` | 是 / 否 |
-| 项目档案 | `.gauntlet/GAUNTLET.md` | 是 |
-| 规则文件 | `.gauntlet/architecture.json`、`.gauntlet/quality-accepted.json`、`.gauntlet/mutation-accepted.json`、`.gauntlet/baseline.json` | 是 |
-| 验收场景 | `.gauntlet/features/*.feature`（cmake-clang 的步骤定义在 `.gauntlet/acceptance/steps/`） | 是 |
-| QA、演示脚本 | `.gauntlet/qa/`、`.gauntlet/demo/` | 是 |
-| 教程、架构图 | `.gauntlet/docs/` | 是 |
-| 构建、输出（报告、证据包） | `.gauntlet/build/`、`.gauntlet/out/` | 否 |
-| 你自己的临时文件（日志、草稿、基线构建） | `.gauntlet/tmp/` | 否 |
+| Tool kit | `.gauntlet/gauntlet.mjs`, `.gauntlet/lib/`, … | yes |
+| Config / machine overrides | `.gauntlet/gauntlet.config.json` / `.gauntlet/gauntlet.local.json` | yes / no |
+| Project profile | `.gauntlet/GAUNTLET.md` | yes |
+| Rule files | `.gauntlet/architecture.json`, `.gauntlet/quality-accepted.json`, `.gauntlet/mutation-accepted.json`, `.gauntlet/baseline.json` | yes |
+| Acceptance scenarios | `.gauntlet/features/*.feature` (cmake-clang step definitions in `.gauntlet/acceptance/steps/`) | yes |
+| QA, demo scripts | `.gauntlet/qa/`, `.gauntlet/demo/` | yes |
+| Tutorials, architecture diagrams | `.gauntlet/docs/` | yes |
+| Build, output (reports, evidence pack) | `.gauntlet/build/`, `.gauntlet/out/` | no |
+| Your own scratch files (logs, drafts, baseline builds) | `.gauntlet/tmp/` | no |
 
-Gauntlet 会话里 `survey` / `init` 默认就用这个布局（环境变量 `GAUNTLET_LAYOUT=home`）。不要在仓库根目录或别处另建
-`gauntlet-out/`、`qa/`、`features/`、`demo/`、`docs/`、`tmp/` 之类的目录，也不许写到仓库外或系统临时目录。
-仓库根目录已经有 `gauntlet.config.json` 的老仓库由第 0 阶段迁进 `.gauntlet/`（gauntlet-survey「迁进 .gauntlet/」）。
+Two files at the root are maintained by the kit itself, each in its own marked block: `.gitignore` (build / output
+directories) and `.cbmignore` (keeps the kit's own code out of the code graph). Commit them; never edit those blocks.
 
-需求本身要求"中间文件放在 tmp"之类时，构建目录、输出目录、生成文件和你的临时文件都必须在那个目录下（`init --workdir tmp`）。
+In Gauntlet sessions `survey` / `init` use this layout by default (`GAUNTLET_LAYOUT=home`). Never create
+`gauntlet-out/`, `qa/`, `features/`, `demo/`, `docs/`, `tmp/` or similar at the root or anywhere else, and never
+write outside the repository or into system temp directories. Old repositories with `gauntlet.config.json` at the
+root are migrated into `.gauntlet/` by stage 0 (gauntlet-survey, "Moving into .gauntlet/").
 
-## 4. 闸门命令（只用这些命令判断是否完成）
+If the requirement itself says "intermediate files go into tmp" or similar, the build directory, output directory,
+generated files and your scratch files must all be under that directory (`init --workdir tmp`).
 
-质量闸门量的是**仓库里全部产品代码**（`sources` 匹配的文件，测试、生成代码、构建目录除外），不只是你改动的部分。
+## 4. Gate commands (the only way to decide you are done)
 
-**先看 `.gauntlet/gauntlet.config.json` 的 `adapter`**，它决定闸门怎么构建、测试、分析：
+**The gates measure the change, not the repository** (`"scope": "changes"`, the default). The change set is what this
+branch changed against base (git diff), and the code graph tells which tests can reach it:
 
-| adapter | 适用 | 工具链片段（具体怎么做都在这里） |
+- static analysis, clang-tidy and cppcheck run on the changed production files only (for C/C++ also the translation
+  units that include a changed header); duplication, CRAP and architecture count only findings on changed lines or
+  inside changed functions; coverage means "changed lines are covered"; mutation testing mutates changed lines;
+- anything outside the change set is shown as out of scope and never fails a gate — you do not clean up code the
+  requirement did not touch;
+- tests are **selected by the graph**: each mutant runs only the test files that reach its file, and a focused `next`
+  round runs only the tests that reach the change (plus test files changed on the branch). The run that confirms
+  DONE and `gate --profile full` use the whole suite.
+
+**Old functions are judged by how much the branch grew them.** A function that already existed at base and that you
+changed may grow by at most `legacy.complexityGrowth` (default +2) cyclomatic complexity and `legacy.linesGrowth`
+(default +20) lines, and may not nest deeper or take more parameters. Within that it passes even if it was already
+over the thresholds — do not refactor it. Anything bigger goes into a **new** function (judged by the thresholds) and
+the old one only calls it.
+
+**Equivalence**: in a project that declared "outputs must not change" (it has `equivalence.cases`), when the branch
+changes production code that existed at base, the `equivalence` gate (cleaner, hardener and full profiles) builds the
+original at base and this branch with the release build, runs the cases on both and compares every output
+(bit-identical unless the project set a tolerance). A difference means the change altered protected behaviour — find
+it and restore it. Only a difference the requirement itself asks for may stand, and only through an entry in
+`.gauntlet/equivalence-accepted.json` that the spec stage drafted and a human confirmed.
+
+`"scope": "all"` (a clean-up requirement: every production file is measured) and ratchet mode (section 6) are set by
+the survey when the requirement calls for them.
+
+**Tiered mutation targets** (clean-up requirements, `tiers` in the config, confirmed by the human at the survey
+checkpoint): each production file belongs to the first tier whose `paths` match it, and each tier has its own
+`mutationScoreMin` — a number, or `"ratchet"` = not below the score recorded with `baseline --mutation` (it only
+rises). `mutate`, the gate, `next` and the evidence pack judge per tier; survivors in a tier that already meets its
+target are not on the punch list. Record the baseline only from a complete run, and only where your stage skill says.
+
+**First look at `adapter` in `.gauntlet/gauntlet.config.json`**; it decides how the gates build, test and analyse:
+
+| adapter | For | Toolchain notes (all the how-to lives here) |
 |---|---|---|
-| `commands`（没写 adapter 也是它） | 任何项目：项目自己的构建 / 测试 / 检查命令 + 标准报告 | **gauntlet-adapter-commands** 技能 |
-| `cmake-clang` | 可选的深度分析：项目本来就用 CMake 构建、clang 能原样编译 | **gauntlet-adapter-cmake** 技能 |
+| `commands` (also when no adapter is set) | any project: its own build / test / lint commands + standard reports | **gauntlet-adapter-commands** skill |
+| `cmake-clang` | optional deep analysis: the project already builds with CMake and compiles with clang as-is | **gauntlet-adapter-cmake** skill |
 
-阶段技能只讲"做什么"；"用什么工具、怎么写"只读对应适配器技能里**你所在阶段**那一节，另一个适配器技能不用读。
+Stage skills say *what* to do; for *which tools and how*, read only **your stage's section** of the matching adapter
+skill and skip the other adapter skill.
 
-技能里写的 `.gauntlet/qa/`、`.gauntlet/architecture.json`、`.gauntlet/quality-accepted.json`、`.gauntlet/mutation-accepted.json`、`.gauntlet/GAUNTLET.md` 是**默认位置**；
-项目可以在 `.gauntlet/gauntlet.config.json` 的 `paths` 里改，以配置为准（例如 `"paths": { "qa": ".gauntlet/handoffs" }`）。
-下表的命令两种适配器都一样，只是底层工具不同。
+The paths `.gauntlet/qa/`, `.gauntlet/architecture.json`, `.gauntlet/quality-accepted.json`,
+`.gauntlet/mutation-accepted.json` and `.gauntlet/GAUNTLET.md` in the skills are **defaults**; a project can move
+them via `paths` in `.gauntlet/gauntlet.config.json` (e.g. `"paths": { "qa": ".gauntlet/handoffs" }`) — the config wins.
+The commands below are the same for both adapters; only the underlying tools differ.
 
-| 命令 | 作用 |
+| Command | What it does |
 |---|---|
-| `spec` | 解析 `.gauntlet/features/*.feature`（cmake-clang 下还会列出没有实现的步骤） |
-| `test` | 构建 + 跑全部测试 + 收集覆盖率；commands 适配器还会核对每个场景都有通过的验收测试 |
-| `static` | **每个**产品文件的每个函数：圈复杂度/长度/嵌套/参数、告警、哪些文件没被分析到 |
-| `tidy` | 静态检查 |
-| `cppcheck` | 第二个静态分析器（cmake-clang 下内置，装了就运行） |
-| `sanitize` | 运行时检查：AddressSanitizer / UndefinedBehaviorSanitizer 跑全部测试，CUDA 测试用 compute-sanitizer |
-| `dup` | 复制粘贴检测：连续 100 个以上相同词法单元算一处 |
-| `crap` | 函数的 CRAP 与覆盖率（先 test） |
-| `arch` | 模块依赖方向、环（`.gauntlet/architecture.json` 或 `commands.arch`） |
-| `mutate` | 变异测试：默认**全部**产品代码、不限数量（慢是正常的）。函数没改过的变异体沿用上次"已杀死"的结果，存活 / 未覆盖的每次重测；`gate --profile full` 和 `--fresh` 全部重测 |
-| `compare <期望> <实际>` | 二进制结果逐帧比较（与原程序对比），`--record .gauntlet/qa/equivalence.json` 记录 |
-| `diagram <候选.json>` | 用 Archify 校验并渲染架构图（每个方块/箭头必须引用真实源码） |
-| `gate --profile <p>` | **你的验收标准**：按阶段跑一组闸门，写 `gate.json` |
-| `next --profile <p>` | 跑闸门 + 给出按优先级排序的待修清单，并判断要不要继续（见第 7 节） |
+| `spec` | Parse `.gauntlet/features/*.feature` (under cmake-clang also lists unimplemented steps) |
+| `test` | Build + run all tests + collect coverage; the commands adapter also checks every scenario has a passing acceptance test |
+| `static` | **Every** function of every production file: cyclomatic complexity / length / nesting / parameters, warnings, files not analysed |
+| `tidy` | Static checks |
+| `cppcheck` | Second static analyser (built into cmake-clang, runs when installed) |
+| `sanitize` | Run-time checks: AddressSanitizer / UndefinedBehaviorSanitizer over all tests, compute-sanitizer for CUDA tests |
+| `dup` | Copy-paste detection: 100+ identical consecutive tokens count as one clone |
+| `crap` | CRAP and coverage per function (run `test` first) |
+| `arch` | Module dependency direction and cycles (`.gauntlet/architecture.json` or `commands.arch`) |
+| `mutate` | Mutation testing on changed lines (`--all` for every production line). Each mutant runs only the test files that **executed its line** (per-test coverage; commands adapter with `commands.testSelect`, falling back to the tests the code graph connects to its file; cmake-clang: ctest via the File API), fast test files first, and mutants run in parallel sandboxes (`mutation.jobs`). Killed results of unchanged functions are reused; survivors are reused while neither the production code nor the **test files that reach them** changed. One run stops after `mutation.maxMinutes` (default 45): the rest is NOT_RUN, the score is shown as "incomplete", and the next run continues. `gate --profile full` audits a sample of the reused results on the whole suite; `--fresh` re-tests everything |
+| `compare <expected> <actual>` | Frame-by-frame binary comparison of two files (ad hoc; the gate uses `equivalence`) |
+| `equivalence [--force]` | Build the original (base) and this branch with the release build, run `equivalence.cases` on both, compare every output |
+| `release` | The release build (`commands.release`): the binary QA and the demos run — never the coverage-instrumented one |
+| `diagram <candidate.json>` | Validate and render an architecture diagram with Archify (every box/arrow must cite real source) |
+| `gate --profile <p>` | **Your acceptance criterion**: runs the stage's gates, writes `gate.json`. Gates that read only production code (static, tidy, cppcheck, dup, arch) reuse their last result while production code and config are unchanged (shown as `♻`) |
+| `next --profile <p>` | Runs the gates, writes a prioritised punch list and decides whether to continue (section 7) |
+| `shards --profile <p>` | Splits a stage's open items by module into shards with disjoint production files (section 4a) |
+| `baseline --mutation` | Records the `"ratchet"` tiers' scores from the last complete mutation run (only rises) |
+| `graph [file…]` | Code graph (codebase-memory-mcp, **required**): which test files reach these production files. Use it to find the table a new test row belongs in, instead of reading the whole test tree |
 
-所有命令的形式都是 `node .gauntlet/gauntlet.mjs <命令>`。各 profile 包含的闸门：
+Every command is `node .gauntlet/gauntlet.mjs <command>`. Gates per profile:
 
-| profile | 闸门 |
+| profile | Gates |
 |---|---|
-| `specifier` | 场景语法 |
-| `coder` | + 构建、全部测试 |
-| `cleaner` | + 测量范围、函数质量、告警、静态检查（含 cppcheck）、重复代码、CRAP、架构 |
-| `hardener` | + 覆盖率、运行时检查（sanitizer）、变异测试 |
-| `full` | + QA、需求约束、与原程序等价性 |
+| `specifier` | scenario syntax |
+| `coder` | + build, all tests |
+| `pin` | build, all tests, coverage, mutation (per tier), equivalence — **no** complexity gates: pins existing behaviour before a clean-up refactors it |
+| `cleaner` | + measurement scope, function quality, warnings, static checks (incl. cppcheck), duplication, CRAP, architecture, equivalence with the original program |
+| `hardener` | + coverage, run-time checks (sanitizers), mutation testing |
+| `full` | + QA, requirement constraints |
 
-输出最后一行是 `GATE <profile>: PASS` 才算通过。
+It passes only when the last line of the output is `GATE <profile>: PASS`.
 
-## 5. 绝对禁止（违反任何一条 = 本阶段作废）
+## 4a. Working on a shard (several agents on one stage)
 
-- 修改 `.gauntlet/architecture.json`、`.gauntlet/gauntlet.config.json`（尤其是 `sources`、`exclude`、`thresholds`——**收窄测量范围或放宽阈值就是作弊**）、
-  `.gauntlet/qa/constraints.json`、`.gauntlet/` 下的工具代码。（第 0 阶段摸底起草配置 / 架构规则、第 1 阶段起草 `.gauntlet/qa/constraints.json` 除外，必须注明"需人工确认"。）
-- 创建、重建或放松棘轮基线 `.gauntlet/baseline.json`（`baseline` / `baseline --reset`、手改里面的数值）。
-  基线只能由第 0 阶段摸底起草（需人工确认）；之后只能运行 `baseline --tighten`（只会收紧）。
-- 用 `.gauntlet/quality-accepted.json` / `.gauntlet/mutation-accepted.json` 掩盖问题。这两个文件只能放**确实无法消除**的例外，
-  每条都要有具体理由；证据包会把它们全部列给人类审核，结论会变成"待你确认"。
-- 宣布需求里的某条要求"超出范围"、"本次不验证"。做不到就以 NEED-HUMAN 收尾，由人决定。
-- 删除、跳过、注释掉已有测试或验收场景；把断言改弱让测试通过。
-- 修改 `.gauntlet/features/*.feature` 的含义（规格阶段以外只能改错别字，并说明）。
-- 用 `#ifdef`、宏、特殊分支来"识别测试环境"。
-- 声称通过但没有贴出闸门输出。
+A big stage (pin, clean, harden in a clean-up) is split into **shards**: groups of production files that do not
+overlap, each sized for one session. Several agents work on them at the same time. If your task has a `Shard:` line:
 
-## 6. 阶段收尾（结果汇报格式）
+- Work **only in the shard's directory** the task names (a git worktree on its own branch beside the repository).
+  `cd` there first; every command runs there.
+- `next --profile <p> --reset` there judges **only your shard's files** (the scope line says `分片 <id>`): its
+  static analysis, CRAP, coverage and mutation cover exactly those files, whole, by the full thresholds.
+- Change **only your shard's production files**. Put new tests in **new test files named after your shard's module**
+  (e.g. `tests/<module>-<topic>.test.mjs`), so parallel shards never edit the same file. Add a row to an existing
+  shared test file only when nothing else works, and say so in the result.
+- Commit on the shard's branch after every batch. **Do not merge, rebase or push** — the Leader merges all shards.
+- Finish with the result block as in section 6, with `shard: <id>` under `stage:`. A shard that cannot finish
+  (STALLED / BUDGET / context) still commits what it has and says what is left.
 
-阶段结束就把下面这段 `GAUNTLET-RESULT` 作为你的最终输出返回给 Leader（这是你这次被调用的结果）。收尾前先提交。
+## 5. Forbidden (any one of these voids the stage)
+
+- Editing `.gauntlet/architecture.json`, `.gauntlet/gauntlet.config.json` (especially `sources`, `exclude`,
+  `thresholds` — **narrowing what is measured or loosening a threshold is cheating**), `.gauntlet/qa/constraints.json`
+  or the tool code under `.gauntlet/`. (Exceptions: stage 0 drafts config / architecture rules and stage 1 drafts
+  `.gauntlet/qa/constraints.json`, always marked "needs human confirmation".)
+- Creating, rebuilding or loosening the ratchet baseline `.gauntlet/baseline.json` (`baseline` / `baseline --reset`,
+  hand-editing values). Only the stage-0 survey drafts it (human-confirmed); afterwards only `baseline --tighten`
+  (which only tightens) may run.
+- Hiding problems in `.gauntlet/quality-accepted.json` / `.gauntlet/mutation-accepted.json`. They hold only
+  exceptions that **truly cannot be removed**, each with a concrete reason; the evidence pack lists every entry for
+  human review and the verdict becomes "needs your confirmation". A `"kind": "low-value"` mutant entry is only for
+  the wording of a message or a log line the arid patterns missed (gauntlet-harden) — never for a condition, a
+  comparison, a number, a return value or anything a verdict depends on.
+- Declaring a requirement "out of scope" or "not verified this time". If it cannot be done, finish with NEED-HUMAN.
+- Deleting, skipping or commenting out existing tests or acceptance scenarios; weakening assertions to pass.
+- Regenerating or editing approved snapshots / golden-master files (`--test-update-snapshots`, rewriting an
+  `.approved` file, …) after the stage that created them. A snapshot that no longer matches means behaviour changed:
+  find out why and restore it. Only the pin stage creates them; a requirement that changes an output goes through the
+  spec stage like an equivalence exception.
+- Changing the meaning of `.gauntlet/features/*.feature` (outside the spec stage only typo fixes, and say so).
+- Changing `equivalence` (cases, tolerances) or `commands.release` after the survey, or making a case skip the
+  outputs that differ; adding entries to `.gauntlet/equivalence-accepted.json` outside the spec stage.
+- Detecting the test environment with `#ifdef`, macros or special branches.
+- Claiming a pass without pasting the gate output.
+
+## 6. Finishing a stage (result format)
+
+When the stage ends, return this `GAUNTLET-RESULT` block as your final output to the Leader (it is the result of
+this invocation). Commit first.
 
 ```
-GAUNTLET-RESULT: PASS          # 或 FAIL / NEED-HUMAN
+GAUNTLET-RESULT: PASS          # or FAIL / NEED-HUMAN
 stage: 2-code
 profile: coder
-branch: gauntlet/<短名> @ <commit 短哈希>
+branch: gauntlet/<short-name> @ <short commit hash>
 gates: spec ✅ build ✅ tests ✅ (25/25)
-loop: rounds=<next 的轮数> distance=<第一轮距离> -> <最后一轮距离>
-summary: 一两句话说明做了什么
-next: 给下一阶段的提示（可选）
+loop: rounds=<next rounds> distance=<first distance> -> <last distance>
+summary: one or two sentences on what you did
+next: hints for the next stage (optional)
 ```
 
-- **PASS** → 全部闸门达标。Leader 过人类闸门后派下一阶段。
-- **FAIL**（`next` 报 STALLED：离阈值的距离连续几轮没有缩小）→ 贴出失败的闸门和 next.md 要点；Leader 按「返工」决定回到哪个阶段。
-- **NEED-HUMAN**（需求有歧义 / 缺工具 / 需要改架构 / 要放松规则）→ 把具体问题和 A/B 选项写清楚；Leader 转交用户，等回复再继续。
-  - **被拒绝的操作**：你是被委派的子 agent，需要审批的操作（装工具、联网下载、写仓库外的位置……）会被自动拒绝。
-    不要重试、不要换个写法绕过：在 summary 里写出**确切的命令**（一行、写明在哪个目录、用哪个 shell）和为什么需要它；
-    Leader 请用户批准后会代为执行，再把这个阶段重新派给你。
+A shard adds `shard: <id>` under `stage:`. A **plan** run (the task says `(plan)`, see the stage skill) that leaves work
+for shards ends with `GAUNTLET-RESULT: FAIL` and adds `shards: <n> (<total> items) — s1: <files/label>; s2: …` so the
+Leader can open them; a plan run whose gate already passes ends with PASS and no shards.
 
-### 棘轮模式（`.gauntlet/gauntlet.config.json` 里 `"ratchet": { "enabled": true }`）
+- **PASS** → every gate meets its threshold. The Leader passes the human checkpoint and dispatches the next stage.
+- **FAIL** (`next` reported STALLED: the distance to the thresholds did not shrink for several rounds) → paste the
+  failing gates and the key points of next.md; the Leader decides where the rework goes.
+- **NEED-HUMAN** (`next` reported BUDGET: the stage's round or time budget is used up) → paste next.md's budget line,
+  the remaining distance and the progress per round; a human decides whether to continue, split the requirement or
+  change the scope.
+- **NEED-HUMAN** (ambiguous requirement / missing tool / architecture change / a rule would have to be loosened)
+  → state the concrete problem and options A/B; the Leader asks the user and waits.
+  - **Denied operations**: as a delegated sub-agent, anything that needs approval (installing tools, downloading,
+    writing outside the repository, …) is denied automatically. Do not retry or rephrase around it: in the summary
+    give the **exact command** (one line, which directory, which shell) and why it is needed; the Leader asks the
+    user, runs it, and dispatches your stage again.
 
-用于已有大量旧代码的仓库。`.gauntlet/baseline.json` 记录了引入 Gauntlet 时就存在的质量欠账：
+### Ratchet mode (`"ratchet": { "enabled": true }` in `.gauntlet/gauntlet.config.json`)
 
-- 基线里的欠账（超标函数、覆盖不足的文件、旧告警、旧重复代码……）**只要不变差**就放行，清单里不会出现；
-- 基线里没有的东西（新函数、新告警、新重复代码）必须达到阈值；**改动过的行**的覆盖率必须达到阈值；
-- 变异测试只变异改动过的行；
-- 碰到旧函数时可以只修 bug，但不能让它更长、更复杂、更缺测试——`next` 会报"比基线更差"。
+The older alternative to change scope, kept for projects that already use it. `.gauntlet/baseline.json` records the
+quality debt that existed when Gauntlet was introduced:
 
-## 7. 迭代循环：指标达标才停
+- Debt in the baseline (offending functions, under-covered files, old warnings, old clones, …) passes **as long as it
+  does not get worse** and does not show up in the punch list;
+- anything not in the baseline (new functions, warnings, clones) must meet the thresholds; **changed lines** must
+  meet the coverage threshold;
+- mutation testing mutates changed lines only;
+- an old function you touch may get a bug fix, but must not become longer, more complex or less tested — `next`
+  reports "worse than baseline".
 
-**没有轮数上限。** 一个阶段什么时候结束，只由指标决定（CRAP、复杂度、覆盖率、变异得分……都达到阈值），
-不由"已经试了几次"决定。用 `next` 驱动循环：
+## 7. The loop: stop when the metrics pass, hand over when the budget is spent
 
-- 本阶段第一次（开一个新循环）：`node .gauntlet/gauntlet.mjs next --profile <你的 profile> --reset`
-- 之后每改完一处：`node .gauntlet/gauntlet.mjs next --profile <你的 profile>`
-- 被中断后重新派来时不要 `--reset`，接着上一轮的循环跑。
+A stage is complete when its metrics meet the thresholds (CRAP, complexity, coverage, mutation score, …). Each
+stage's loop also has a **budget** — `loop.maxRounds` rounds and `loop.maxHours` hours of *active* time (default
+20 rounds / 4 hours; time spent waiting for a human does not count). When it is used up you stop and hand over
+instead of running on. Drive the loop with `next`:
 
-| 退出码 | 结论 | 你要做的事 |
+- First time in this stage (starts a new loop): `node .gauntlet/gauntlet.mjs next --profile <your profile> --reset`
+- After each batch of fixes: `node .gauntlet/gauntlet.mjs next --profile <your profile>`
+- When re-dispatched after an interruption, do **not** `--reset`; continue the existing loop.
+
+| Exit code | Verdict | What you do |
 |---|---|---|
-| 0 | DONE | 全部闸门通过 → 按第 6 节以 PASS 收尾，进入下一阶段 |
-| 1 | CONTINUE | 修清单（`.gauntlet/out/next.md`）的第 1 项（同类问题可一起修），再运行 `next` |
-| 3 | STALLED | 离阈值的距离连续几轮没缩小 → 停止，以 FAIL / NEED-HUMAN 收尾，把 next.md 的要点写进 summary |
+| 0 | DONE | every gate passes → finish with PASS (section 6) |
+| 1 | CONTINUE | fix the top of the punch list (`.gauntlet/out/next.md`; fix related items together), run `next` again |
+| 3 | STALLED | the distance did not shrink for several rounds → stop, finish with FAIL / NEED-HUMAN, put next.md's key points in the summary |
+| 4 | BUDGET | still improving but the stage's round / time budget is spent → stop, finish with NEED-HUMAN, paste next.md's budget line and the remaining list |
 
-"距离"= 待修项数 + 每个超标值超出阈值的比例，所以把一个函数的 CRAP 从 182 降到 40 也算进展，会继续循环。
-不要因为"轮数太多"提前收尾；也不要为了让距离变小去改阈值、扩大 exclude 或写 accepted 文件（第 5 节）。
+"Distance" = number of open items + how far each measured value exceeds its threshold, so bringing one function from
+CRAP 182 down to 40 counts as progress. Do not stop on your own before DONE / STALLED / BUDGET, and never make the
+distance smaller by changing thresholds, widening `exclude` or writing accepted files (section 5).
 
-## 8. 测试写法：表驱动，够用就停
+`next` is incremental, so later rounds are much cheaper than the first:
 
-测试的价值在断言，不在函数个数。闸门要的是"每个行为都被断言锁住"（覆盖率、零存活变异体），不是测试越多越好。
+- From the second round on it **re-runs only the gates that failed last round** and only the tests that can reach
+  the change (build and tests always run); gates that passed are carried over. When the failing ones pass it
+  automatically runs the complete gate on the whole suite once more and only then reports DONE.
+- While it runs, the kit writes `.gauntlet/out/progress.json` (step, k/N, the file and function being worked on, an
+  estimate of the time left); the user watches it in the workflow panel. You do not need to read it.
+- A surviving mutant is re-tested only when the production code or a **test file that reaches it** changed;
+  otherwise its last result is reused (marked as reused). So **add test rows to the file next.md names under
+  "能到达它的测试" (tests that reach it)**; a row added elsewhere does not get that mutant re-tested.
+- "N mutants not tested this round (mutation.maxMinutes)" needs no code change: deal with the listed survivors and
+  run `next` again; it continues where the last run stopped.
+- Reused results can never turn a gate green: DONE only comes from a complete run, and `gate --profile full`
+  audits a sample of every reused result on the whole suite (any disagreement re-tests them all).
 
-- **同一个函数 / 同一种行为的多组输入输出，写成一张表 + 一个测试**（参数化）：
-  JS `for (const [input, want] of cases) test(\`… [${input}]\`, …)` 或 `test.each`；Python `@pytest.mark.parametrize`；
-  GoogleTest `TEST_P` 或循环 + `SCOPED_TRACE`；Go `for _, tc := range cases { t.Run(tc.name, …) }`；没有框架时数组 + 循环断言。
-  每一行要带能认出是哪一行的名字或说明，失败时一眼看出是哪组输入。
-- **补覆盖、杀变异体时先往已有的表里加一行**（边界值、边界 ±1、另一半条件），不要为一个变异体新写一个测试函数。
-- 一行用例只有在断言了别的行没断言的东西时才值得留下：同一路径、同一断言的重复用例不要写。
-- 本分支新写的测试里出现了重复，可以合并成表（合并前后 `test` 全绿、覆盖率和变异得分都不能下降）；
-  **分支开始前就有的测试一律不动**（第 5 节）。
-- 验收测试仍然一个场景对应一个（名字和场景一致）；Scenario Outline 的 Examples 本身就是表，用循环生成。
-- 不许为了"少写"去删断言，或把一堆不相关的行为塞进一个大测试（失败时看不出坏在哪）。
+**Fix a batch per round, not a single item**: everything open in the same function or file goes in one round.
 
-## 9. 小步快跑
+## 8. Writing tests: table-driven, and stop when it is enough
 
-Bob 大叔：小步、频繁运行测试、每次只改一处。每改一小块就跑一次相关命令，变绿就提交（第 2 节）。
-上下文越长你越容易犯错（"lost in the middle"）——只读和本阶段有关的文件。
+A test is worth its assertions, not its count. The gates want every behaviour pinned by an assertion (coverage, zero
+surviving mutants), not as many tests as possible.
+
+- **Several inputs/outputs of the same function or behaviour are one table + one test** (parameterised):
+  JS `for (const [input, want] of cases) test(\`… [${input}]\`, …)` or `test.each`; Python
+  `@pytest.mark.parametrize`; GoogleTest `TEST_P` or a loop + `SCOPED_TRACE`; Go
+  `for _, tc := range cases { t.Run(tc.name, …) }`; without a framework an array + a loop of assertions.
+  Every row carries a name or label, so a failure shows which input broke.
+- **To add coverage or kill a mutant, first add a row to an existing table** (the boundary, boundary ±1, the other
+  half of a condition); do not write a new test function for one mutant.
+- A row is worth keeping only if it asserts something no other row asserts: no duplicate rows on the same path with
+  the same assertion.
+- Duplicated tests written on this branch may be merged into a table (`test` green before and after; coverage and
+  mutation score must not drop); **tests that existed before the branch are never touched** (section 5).
+- Acceptance tests stay one per scenario (named after the scenario); a Scenario Outline's Examples already are a
+  table — generate them with a loop.
+- Never delete assertions to "write less", and never cram unrelated behaviours into one big test (a failure would
+  not show what broke).
+
+## 9. Small steps
+
+Uncle Bob: small steps and frequent test runs. Make one small change at a time and run `test` (fast) after each;
+commit when green (section 2). Run `next` (the full loop round) after a batch of related fixes, not after every edit.
+The longer your context, the more mistakes ("lost in the middle") — read only the files this stage needs.

@@ -1,93 +1,124 @@
 ---
 name: gauntlet-qa
-description: Gauntlet 第 5 阶段（QA）：按 .gauntlet/qa/*.qa.md 在真实构建产物上逐条执行检查，记录确定性的 pass/fail 报告 .gauntlet/qa/qa-report.json（提交到分支），并编写可回放的演示脚本 .gauntlet/demo/*.json。
+description: Gauntlet stage 5 (QA) — execute every check in .gauntlet/qa/*.qa.md against the real built product, record a deterministic pass/fail report .gauntlet/qa/qa-report.json (committed to the branch), and write replayable demo scripts .gauntlet/demo/*.json.
 ---
 
-# QA 阶段
+# QA stage
 
-验收测试在进程内验证行为；你验证**真正交付的东西**能用——真实的可执行文件、真实的输入输出、
-真实的退出码。你不修改任何产品代码或测试。
+Acceptance tests verify behaviour in-process; you verify that **what is actually delivered** works — the real
+executable, real inputs and outputs, real exit codes. You never change production code or tests.
 
-## 步骤
+## Steps
 
-1. 读任务、切分支（gauntlet-core）。
-2. 构建：`node .gauntlet/gauntlet.mjs test`。真实产物在哪、怎么运行见适配器技能「5 QA」一节。
-3. 打开 `.gauntlet/qa/*.qa.md`，**逐条真实执行**，把实际结果原样记下来。
-4. **逐条证实 `.gauntlet/qa/constraints.json` 里的需求约束**（见下文）。每条约束至少一条检查，检查里写 `"constraint": "C1"`。
-5. 需要与原程序等价时（`.gauntlet/gauntlet.config.json` 里 `requireEquivalence: true`，或 QA 文档写了对比计划），
-   做黄金样本对比（见下文），结果记录在 `.gauntlet/qa/equivalence.json`。
-6. 写 `.gauntlet/qa/qa-report.json`（格式见下，**提交到分支**——下一阶段在另一个工作区运行，只能拿到提交过的文件）。
-   只要有一条不符合期望，`verdict` 就是 `fail`。
-7. 写演示脚本 `.gauntlet/demo/<主题>.json`（会被提交到仓库，证据包阶段用它录制演示），并试跑：
-   `node .gauntlet/gauntlet.mjs demo .gauntlet/demo/<主题>.json`
-8. 收尾（gauntlet-core 第 6 节）：
-   - 全部通过 → PASS
-   - 有失败 → FAIL，summary 写清哪几条不符合、实际看到了什么，Leader 会安排回到编码阶段返工
-   - 有约束无法验证（服务器连不上、缺工具……）→ NEED-HUMAN。**不能**写"本次不验证/超出范围"后判 PASS。
+1. Read the task and confirm the branch (gauntlet-core).
+2. Build the product the way it ships: `node .gauntlet/gauntlet.mjs release` (no coverage or sanitizer
+   instrumentation — instrumented binaries can produce different numbers). Run that binary in every check and in the
+   demo script; where it is and how to run it: the project profile and the adapter skill, section "5 QA".
+3. Open `.gauntlet/qa/*.qa.md` and **really execute every check**, recording the actual results verbatim.
+4. **Prove every requirement constraint in `.gauntlet/qa/constraints.json`** (below). Each constraint needs at least
+   one check; the check carries `"constraint": "C1"`.
+5. Equivalence with the original program is checked by the `equivalence` gate from the configured cases. If the QA
+   document plans further comparisons than those cases cover, do them as golden-sample comparisons (below) and
+   record them in `.gauntlet/qa/equivalence.json`.
+6. Write `.gauntlet/qa/qa-report.json` (format below) and **commit it** — the next stage runs in another workspace
+   and only sees committed files. If any check does not match its expectation, `verdict` is `fail`.
+7. Write the demo script `.gauntlet/demo/<topic>.json` (committed; the evidence stage records it) and try it:
+   `node .gauntlet/gauntlet.mjs demo .gauntlet/demo/<topic>.json`
+8. Finish (gauntlet-core section 6):
+   - all pass → PASS
+   - failures → FAIL; the summary says which checks failed and what you actually saw; the Leader sends the work
+     back to the code stage
+   - a constraint cannot be verified (server unreachable, missing tool, …) → NEED-HUMAN. You may **not** write
+     "not verified this time / out of scope" and report PASS.
 
-## qa.json 格式
+## A known gap is still a fail
+
+A check whose expected result did not happen is `fail` — even when a human already decided to accept the gap (for
+example, a mutation score left below its target at an approved budget cap). Record it as `fail`, put the human's
+decision in the check's note ("accepted by the human as a known gap, not met"), and leave the constraint it proves
+unproved. The `qa` and `constraints` gates then show the gap honestly; the evidence pack is where the human weighs
+it. Marking such a check `pass` hides the gap from every gate that reads the report — that voids the stage.
+
+## Keep runs bounded
+
+The product may run for a long time (simulations, large inputs). Use the smallest input that proves the check;
+give long runs an explicit time limit in the command you run (the project's own option, or your shell's timeout).
+If a run takes far longer than the profile says it should, stop it and record it as a failed check with what you
+observed — never wait on it open-ended.
+
+## qa-report.json format
 
 ```json
 {
   "verdict": "pass",
-  "summary": "一句话结论",
-  "environment": { "hosts": ["node03 / 172.19.133.164"], "commit": "<完整 sha>", "workdir": "..." },
+  "summary": "one-sentence conclusion",
+  "environment": { "hosts": ["node03 / 172.19.133.164"], "commit": "<full sha>", "workdir": "..." },
   "checks": [
-    { "id": "Q1", "title": "年份转罗马数字", "action": "roman 2026",
+    { "id": "Q1", "title": "year to Roman numerals", "action": "roman 2026",
       "expected": "MMXXVI, exit 0", "actual": "MMXXVI, exit 0", "status": "pass", "constraint": "C1" }
   ]
 }
 ```
 
-`actual` 必须是你真实看到的输出（可以截断），不能照抄 `expected`。一条检查证实多条约束时写数组 `"constraint": ["C1", "C3"]`。
+`actual` must be the output you really saw (it may be truncated), never a copy of `expected`. A check that proves
+several constraints uses an array: `"constraint": ["C1", "C3"]`.
 
-## 证实需求约束
+## Proving requirement constraints
 
-- **多台服务器**：在每一台上分别构建并跑全部测试，`actual` 里写主机名（`hostname`）和结果。一台一条检查。
-- **只能写某个目录**：运行程序前 `node .gauntlet/gauntlet.mjs leak-check --mark`，运行后 `node .gauntlet/gauntlet.mjs leak-check`
-  （默认查临时目录和家目录，仓库自身不算；需要时 `--roots` 指定位置），`LEAK-CHECK: PASS` 才算通过。
-  与被测程序无关的系统噪声（浏览器缓存等）可以 `--ignore` 掉，但要在 `actual` 里逐条写明忽略了什么、为什么。
-- **中间文件放 tmp**：`git status --porcelain --ignored` 里，除了 `tmp/` 之外不应出现新的忽略文件或未跟踪文件。
+- **Several servers**: build and run all tests on each one; `actual` records the host name (`hostname`) and the
+  result. One check per server.
+- **Only write into one directory**: `node .gauntlet/gauntlet.mjs leak-check --mark` before running the program and
+  `node .gauntlet/gauntlet.mjs leak-check` after (by default it checks the temp and home directories, the repository
+  itself does not count; use `--roots` for other places). Only `LEAK-CHECK: PASS` passes. System noise unrelated to
+  the program (browser caches, …) may be dropped with `--ignore`, but `actual` must list each ignored item and why.
+- **Intermediate files in tmp**: in `git status --porcelain --ignored`, no new ignored or untracked files may
+  appear outside `tmp/`.
 
-## 与原程序等价（黄金样本对比）
+## Equivalence with the original program (golden samples)
 
-1. 在工作目录里取出基线版本并构建，例如：
-   `git worktree add .gauntlet/tmp/baseline <基线commit>`，然后按原项目的方式在 `.gauntlet/tmp/baseline` 里构建原程序。
-2. 用同一份输入，分别运行原程序和新程序，每个用例输出到 `.gauntlet/tmp/equiv/<用例>/{old,new}/`。
-   用例矩阵按 QA 文档：每个方法 × 每个后端 × 至少两种规模。
-3. 对每一个输出文件比较并记录：
+1. Check out and build the baseline inside the work area, e.g.
+   `git worktree add .gauntlet/tmp/baseline <baseline commit>`, then build the original program in
+   `.gauntlet/tmp/baseline` the way the original project builds.
+2. Run the original and the new program on the same input; each case writes to
+   `.gauntlet/tmp/equiv/<case>/{old,new}/`. The case matrix follows the QA document: every method × every backend ×
+   at least two sizes.
+3. Compare and record every output file:
    ```
    node .gauntlet/gauntlet.mjs compare .gauntlet/tmp/equiv/stencil-cpu/old/snap.bin .gauntlet/tmp/equiv/stencil-cpu/new/snap.bin --dtype f32 --header 0 --frame 2097152 --tol 1e-6 --name "stencil · cpu · 128³ · snapshot" --record .gauntlet/qa/equivalence.json
    ```
-   能逐位一致的用 `--exact`。NaN/Inf 位置不一致一律判失败。
-   **文本输出**（日志、CSV、JSON、打印的表格……）用 `--text`：逐行比较，文字必须一致（忽略空白），
-   每个数字按数值比较（默认必须相等，`1.0` 和 `1.00`、`1.0D+00` 算相等；需要容差时写 `--tol <相对误差>` / `--atol <绝对误差>` 并说明理由）：
+   Use `--exact` where results match bit for bit. Mismatched NaN/Inf positions always fail.
+   **Text output** (logs, CSV, JSON, printed tables, …) uses `--text`: compared line by line, words must match
+   (whitespace ignored), every number compared numerically (equal by default; `1.0`, `1.00` and `1.0D+00` count as
+   equal; for a tolerance use `--tol <relative>` / `--atol <absolute>` and give the reason):
    ```
-   node .gauntlet/gauntlet.mjs compare .gauntlet/tmp/equiv/case1/old/out.csv .gauntlet/tmp/equiv/case1/new/out.csv --text --name "case1 · 输出表" --record .gauntlet/qa/equivalence.json
+   node .gauntlet/gauntlet.mjs compare .gauntlet/tmp/equiv/case1/old/out.csv .gauntlet/tmp/equiv/case1/new/out.csv --text --name "case1 · output table" --record .gauntlet/qa/equivalence.json
    ```
-4. `.gauntlet/qa/equivalence.json` 提交到分支；证据包会把每一项画成表格和误差柱状图。
+4. Commit `.gauntlet/qa/equivalence.json`; the evidence pack draws every entry as a table and an error bar chart.
 
-## 演示脚本格式（.gauntlet/demo/<主题>.json）
+## Demo script format (.gauntlet/demo/<topic>.json)
 
 ```json
 {
-  "title": "roman：阿拉伯数字 ⇄ 罗马数字",
+  "title": "roman: Arabic ⇄ Roman numerals",
   "cwd": "../..",
   "steps": [
-    { "say": "把今年转成罗马数字" },
+    { "say": "Convert this year to Roman numerals" },
     { "run": "roman 2026" },
-    { "say": "非法输入会报错，退出码 2" },
+    { "say": "Invalid input is rejected with exit code 2" },
     { "run": "roman IIII", "expectCode": 2 }
   ]
 }
 ```
 
-- `cwd` 相对于脚本文件所在目录（脚本放在 `.gauntlet/demo/`，所以 `"../.."` 就是仓库根目录）。
-- 命令在 POSIX shell 里执行（Windows 上自动用 Git Bash），路径用 `/`。
-- 演示要讲一个**用户故事**：先展示最常用的用法，再展示一个错误处理。3~6 条命令足够。
+- `cwd` is relative to the script's directory (scripts live in `.gauntlet/demo/`, so `"../.."` is the repo root).
+- Commands run in a POSIX shell (Git Bash on Windows, automatically); use `/` in paths. Each step is killed after
+  `timeoutSec` (default 30).
+- A demo tells a **user story**: the most common use first, then one error case. 3–6 commands are enough.
 
-## GUI / 非命令行项目
+## GUI / non-CLI projects
 
-如果交付物是图形界面或服务：
-- 能用命令行驱动的部分（`--help`、无头模式、HTTP 接口用 `curl`）仍写进 demo 脚本；
-- 能截图就截图，把 PNG 放进 `.gauntlet/qa/media/` 并提交（证据包会自动嵌入），在 qa.json 的 check 里写上文件名。
+If the deliverable is a GUI or a service:
+- whatever can be driven from the command line (`--help`, headless mode, HTTP endpoints with `curl`) still goes into
+  the demo script;
+- take screenshots where possible: PNGs go into `.gauntlet/qa/media/` and are committed (the evidence pack embeds
+  them); name the file in the check in qa-report.json.

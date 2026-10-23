@@ -1,119 +1,217 @@
 ---
 name: gauntlet-survey
-description: Gauntlet 第 0 阶段（Surveyor）：在规格之前摸清目标仓库——语言、构建和测试命令、CI、现有质量工具、目录与模块、约定和坑；安装 .gauntlet、选适配器、填好并验证 .gauntlet/gauntlet.config.json、决定是否开棘轮模式，并把结论写成项目档案 GAUNTLET.md，供本需求和以后所有需求复用。
+description: Gauntlet stage 0 (Surveyor) — before the spec, learn the target repository (languages, build and test commands, CI, existing quality tools, layout and modules, conventions and pitfalls); install .gauntlet, pick the adapter, fill in and verify .gauntlet/gauntlet.config.json (including graph-selectable tests), decide the measurement scope, build the code graph, and write the project profile GAUNTLET.md that this and every later requirement reuses.
 ---
 
-# 摸底阶段（Surveyor）
+# Survey stage (Surveyor)
 
-后面每个阶段的 agent 都是全新启动的，对这个仓库一无所知。你的工作是**只做一次**的项目调研：
-把"这个仓库怎么构建、怎么测试、代码在哪、有什么规矩、有什么坑"查清楚、**实际跑通**，
-写进项目档案 `.gauntlet/GAUNTLET.md`。以后的需求直接复用它，只在仓库变了时刷新。
+Every later stage agent starts fresh and knows nothing about this repository. Your job is project research done
+**once**: find out how it builds, how it tests, where the code is, what the rules are and what the pitfalls are;
+**actually run it**; and write it all into the project profile `.gauntlet/GAUNTLET.md`. Later requirements reuse
+it and only refresh it when the repository changed.
 
-你**不改产品代码和测试**，也不写验收场景（那是第 1 阶段的事）。
+You **do not change production code or tests**, and you do not write acceptance scenarios (that is stage 1).
 
-## 步骤
+## Steps
 
-1. 按 gauntlet-core 第 1、2 节读任务、确认在工作分支上（Leader 已建好）。
-2. **安装 / 更新工具**：按 gauntlet-core 第 3 节从 kit 来源安装 `.gauntlet/`——仓库里已经有也重新安装一次，工具才会跟上 kit 的更新
-   （`.gauntlet/VERSION` 里是版本号）。有变化就和本阶段的其他改动一起提交，结果里写 `kit: <旧版本> -> <新版本>`。
-   kit 来源访问不了（离线）但仓库里已有 `.gauntlet/`：继续用它，在结果里写明没能更新；仓库里也没有：按 gauntlet-core 第 3 节 NEED-HUMAN。
-   然后：
+1. Read the task and confirm you are on the work branch the Leader created (gauntlet-core sections 1 and 2).
+2. **Install / update the tools**: install `.gauntlet/` from the kit as in gauntlet-core section 3 — reinstall even
+   if the repository already has one, so the tools follow kit updates (`.gauntlet/VERSION` holds the version).
+   Commit any change together with the rest of this stage and write `kit: <old> -> <new>` in the result.
+   If the kit source is unreachable (offline) but the repository has `.gauntlet/`, keep using it and say it could
+   not be updated; if there is none, NEED-HUMAN as in gauntlet-core section 3. Then:
    ```
-   node .gauntlet/gauntlet.mjs survey        # 结果在输出目录的 survey.md / survey.json
+   node .gauntlet/gauntlet.mjs survey        # writes survey.md / survey.json into the output directory
    ```
-   最后一行是结论：
-   - `UP-TO-DATE`：档案存在、配置存在，之后没有构建 / CI / 质量配置变化 → 走「快速复核」。
-   - `REFRESH`：档案过期（survey.md 列出了变化的文件）或缺配置 → 只更新受影响的部分，再走「快速复核」。
-   - `FULL`：没有档案 → 走「完整摸底」。
-3. 仓库根目录有 `gauntlet.config.json`（老布局，文件散在根目录）：先按下面「迁进 .gauntlet/」做完，再重新 `survey`。
+   The last line is the verdict:
+   - `UP-TO-DATE`: profile and config exist, no build / CI / quality-config changes since → "Quick check".
+   - `REFRESH`: the profile is stale (survey.md lists the changed files) or the config is missing → update only
+     what is affected, then "Quick check".
+   - `FULL`: no profile → "Full survey".
+3. If the repository root has `gauntlet.config.json` (old layout, files spread over the root): do "Moving into
+   .gauntlet/" below first, then run `survey` again.
 
-### 迁进 .gauntlet/（只对老布局的仓库做一次）
+### Moving into .gauntlet/ (once, old-layout repositories only)
 
-目标：Gauntlet 的文件全部收进 `.gauntlet/`（gauntlet-core 第 3 节「文件放哪里」），根目录不再留任何 Gauntlet 文件。
+Goal: every Gauntlet file lives in `.gauntlet/` (gauntlet-core section 3, "Where files go"); nothing of Gauntlet
+remains at the root.
 
-1. 用 `git mv` 把存在的这些移过去：`gauntlet.config.json`、`GAUNTLET.md`、`architecture.json`、`quality-accepted.json`、
-   `mutation-accepted.json`、`qa/`、`features/`、`demo/`、`acceptance/steps/` → `.gauntlet/` 下同名位置；
-   `gauntlet-baseline.json` → `.gauntlet/baseline.json`；证据包阶段写的教程 `docs/<主题>.md` 和 `docs/architecture/` → `.gauntlet/docs/`
-   （项目自己的文档不动）。`gauntlet.local.json`（不提交）直接移到 `.gauntlet/gauntlet.local.json`。
-2. 改 `.gauntlet/gauntlet.config.json`：删掉还指向老位置的 `outDir`、`buildDir`、`features`、`stepsDir`、`generatedDir`、`paths`、
-   `ratchet.baseline`（删掉后默认就是 `.gauntlet/` 里的位置）；`commands` 里写死的 `gauntlet-out/…` 换成 `{out}/…`。
-   **只改位置，`sources`、`exclude`、`thresholds` 一个字都不动。**
-3. 演示脚本的 `"cwd": ".."` 改成 `"../.."`；cmake-clang 按 `init` 打印的那行更新 CMakeLists.txt 里的 `gauntlet_add_acceptance(...)`。
-4. 删掉 `.gitignore` 里 `# gauntlet` 下的老条目，运行 `node .gauntlet/gauntlet.mjs init`（已有配置会保留，只补上新的忽略规则），
-   再删掉根目录残留的 `gauntlet-out/`、`build-gauntlet*/`（都是生成的）。
-5. `node .gauntlet/gauntlet.mjs test` 跑通后和档案一起提交（`[survey] move gauntlet files into .gauntlet/`），结果写 `rules: changed`。
+1. `git mv` whichever of these exist: `gauntlet.config.json`, `GAUNTLET.md`, `architecture.json`,
+   `quality-accepted.json`, `mutation-accepted.json`, `qa/`, `features/`, `demo/`, `acceptance/steps/` → the same
+   names under `.gauntlet/`; `gauntlet-baseline.json` → `.gauntlet/baseline.json`; tutorials the evidence stage
+   wrote, `docs/<topic>.md` and `docs/architecture/` → `.gauntlet/docs/` (leave the project's own docs alone).
+   `gauntlet.local.json` (not committed) simply moves to `.gauntlet/gauntlet.local.json`.
+2. In `.gauntlet/gauntlet.config.json`, delete `outDir`, `buildDir`, `features`, `stepsDir`, `generatedDir`, `paths`
+   and `ratchet.baseline` if they still point at old locations (the defaults are the `.gauntlet/` locations);
+   replace hard-coded `gauntlet-out/…` in `commands` with `{out}/…`.
+   **Only locations change; `sources`, `exclude` and `thresholds` stay exactly as they are.**
+3. Change `"cwd": ".."` in demo scripts to `"../.."`; for cmake-clang update `gauntlet_add_acceptance(...)` in
+   CMakeLists.txt to the line `init` prints.
+4. Remove the old entries under `# gauntlet` in `.gitignore`, run `node .gauntlet/gauntlet.mjs init` (an existing
+   config is kept; only the new ignore rules are added), then delete leftover `gauntlet-out/` and `build-gauntlet*/`
+   at the root (all generated).
+5. Once `node .gauntlet/gauntlet.mjs test` runs, commit together with the profile
+   (`[survey] move gauntlet files into .gauntlet/`) and write `rules: changed`.
 
-### 快速复核（档案仍然有效）
+### Quick check (the profile is still valid)
 
-1. 读 `.gauntlet/GAUNTLET.md`，运行 `node .gauntlet/gauntlet.mjs doctor`（必须全绿）和 `node .gauntlet/gauntlet.mjs test`（必须能跑完并产出报告）。
-2. 都正常：只把档案里的 `commit:` 更新为当前 commit（以及确实变了的事实），提交；结果写 `rules: unchanged`。
-3. 跑不通：说明档案已经不对，改走「完整摸底」。
+1. Read `.gauntlet/GAUNTLET.md`, run `node .gauntlet/gauntlet.mjs doctor` (must be all green) and
+   `node .gauntlet/gauntlet.mjs test` (must finish and write its reports).
+2. Both fine: update only `commit:` in the profile to the current commit (plus any fact that really changed),
+   commit, and write `rules: unchanged`.
+3. Something fails: the profile is wrong — do the "Full survey".
 
-### 完整摸底
+### Full survey
 
-1. **读**：survey.md；README / CONTRIBUTING / AGENTS.md / CLAUDE.md 等文档；CI 配置里实际跑的命令；
-   survey.md 列出的构建文件。只读和构建、测试、结构有关的部分。
-2. **跑**：用项目自己的方式构建并跑一次全部测试（优先照搬 CI 的命令），记下命令、耗时、需要的环境变量。
-   - 默认分支上原有测试就失败、或环境缺东西跑不起来 → 不要修，记进档案的「坑」，以 NEED-HUMAN 收尾，写清楚缺什么。
-3. **工具链原样使用**：项目用什么编译器、包装器、构建系统、运行环境，就照原样记录和配置，不换编译器、不改构建方式
-   （commands 适配器技能「工具链原则」）。默认用 commands；只有项目本来就用 CMake、且 clang 能原样编译，又需要更深的分析时才选 cmake-clang。
-4. **选适配器**并配置（按对应适配器技能的「0 摸底」一节）：`init`，填 `sources`（**全部**产品代码；survey 给了草稿，
-   逐个目录确认它是不是产品代码）、`commands`（survey 给了草稿，必须改成真能跑的命令；它们由 kit 交给系统 shell 执行，
-   Windows 上是 cmd.exe——参数用双引号、不用 bash 专属写法，见 gauntlet-core 第 3 节「三个 shell」）、架构规则草稿
-   （原则见 gauntlet-specify「架构草稿」）。直到：
+1. **Read**: survey.md; README / CONTRIBUTING / AGENTS.md / CLAUDE.md and similar docs; the commands CI really runs;
+   the build files survey.md lists. Only the parts about building, testing and structure.
+2. **Run**: build and run all tests the project's own way once (copy CI's commands where possible); record the
+   commands, how long they take and the environment variables they need.
+   - If the existing tests already fail on the default branch, or the environment lacks something to run them:
+     do not fix it; record it under "Pitfalls" and finish with NEED-HUMAN stating what is missing.
+3. **Use the toolchain as it is**: record and configure whatever compiler, wrappers, build system and runtime the
+   project uses; never switch compilers or change how it builds (commands adapter skill, "Toolchain principles").
+   Use the commands adapter by default; choose cmake-clang only when the project already uses CMake, clang compiles
+   it as-is, and deeper analysis is wanted.
+4. **Choose the adapter** and configure it (the "0 Survey" section of that adapter skill): `init`, fill in `sources`
+   (**all** production code; survey.md has a draft — confirm each directory really is production code), `commands`
+   (survey.md has a draft that must be made to really run; the kit hands them to the system shell, cmd.exe on
+   Windows — double quotes, no bash-only syntax, see gauntlet-core section 3 "Three shells"), and the architecture
+   rule draft (principles in gauntlet-specify, "Architecture draft"). Until:
    ```
-   node .gauntlet/gauntlet.mjs doctor      # 全绿
-   node .gauntlet/gauntlet.mjs test        # 跑完并产出测试 / 覆盖率报告（验收场景还没写，ACCEPTANCE 失败是正常的）
+   node .gauntlet/gauntlet.mjs doctor      # all green, including "code graph"
+   node .gauntlet/gauntlet.mjs test        # finishes and writes test / coverage reports (ACCEPTANCE failing is expected: no scenarios yet)
    ```
-5. **量现状**：`node .gauntlet/gauntlet.mjs gate --profile quality`（不需要场景，只量质量闸门：scope、complexity、warnings、tidy、
-   duplication、crap、arch、coverage）。旧代码本身就过不了、而本次需求不是"清理旧代码"时：
-   在 `.gauntlet/gauntlet.config.json` 设 `"ratchet": { "enabled": true }`，运行 `node .gauntlet/gauntlet.mjs baseline` 记录现有欠账。
-   需求本身就是重构 / 清理时不开棘轮。
-6. **写档案** `.gauntlet/GAUNTLET.md`（模板见下）。`base:` 必须写：survey.md 的「分支基线」给出了它；显示"找不到"时问清楚默认分支再写，
-   否则棘轮模式的"改动行"无从计算（闸门会报错），提交 `.gauntlet/GAUNTLET.md`、`.gauntlet/gauntlet.config.json`、架构规则、`.gauntlet/baseline.json`（如有）。
-   结果里写 `rules: created`（第一次）或 `rules: changed`（改了配置 / 架构规则 / 基线），并写"规则文件草稿：需人工确认"。
+   If `doctor` shows ❌ for `code graph`, finish with NEED-HUMAN and hand back
+   `npm install -g codebase-memory-mcp`. If it shows ➖ for `testSelect` (commands adapter), configure it now — it is
+   what keeps mutation testing proportional to the change (commands adapter skill, "0 Survey").
+5. **Scope**: keep the default `"scope": "changes"` — the gates measure what the branch changes, not the whole
+   repository, so no repository-wide measurement or baseline is needed. Only when the requirement itself is
+   refactoring / cleaning up existing code set `"scope": "all"` (and `"mutation": { "scope": "all" }`), and give the
+   reason in the result; the Leader asks the user to confirm. Do not run a whole-repository `gate --profile quality`
+   on a large codebase "for information": it costs hours and decides nothing.
+   With `"scope": "all"` **tiered mutation targets are required** (`tiers`, gauntlet-core section 4; the gate warns
+   without them): one score for ten thousand lines is the wrong goal. Keep the core tier **small** — the files whose
+   mistakes would be silent and costly because they decide things (verdicts, numerics, parsing, money, permissions),
+   not whole directories — e.g. `mutationScoreMin: 0.8`; everything else (output formatting, reports, UI, glue,
+   scripts) `"ratchet"` (must not get worse; golden masters pin it cheaply in the pin stage). Explain each tier in the
+   profile; the Leader shows them to the user.
+   A clean-up of a large codebase is better done module by module (Uncle Bob's boy-scout rule beats a big clean-up
+   sprint): when the requirement covers far more than one module, say so in the result's `next:` and suggest a split
+   — the Leader asks the user.
+   Mutation skips lines that only log (`mutation.arid`, built-in patterns for logging calls). If the product's user-
+   facing output is pinned by golden masters, you may propose adding its output calls (e.g. `^\\s*console\\.log\\(`)
+   — that is a rule change the human confirms; say why in the profile.
+   For the commands adapter set `commands.mutationTest` to the plain test command with `{files}` and no reporters or
+   coverage (e.g. `node --test --test-reporter=dot {files}`): every mutant then runs only the test files that
+   executed its line, without instrumentation.
+6. **Build the code graph**: `node .gauntlet/gauntlet.mjs graph` (codebase-memory-mcp indexes the code; the hardening
+   stage relies on it to skip most mutant re-runs). Record "production files reachable from tests" under "Quality
+   today" in the profile. If the share is low (most production files reach no test), add a pitfall: hardening will be
+   slower.
+7. **Turn the project's red lines into gates.** Read AGENTS.md / CLAUDE.md / CONTRIBUTING / README for rules such as
+   "do not change numerical results", "outputs must stay bit-identical", "validate against the baseline". A rule
+   written only in the profile is not enforced — every stage after you will treat it as optional. For each one:
+   - **Behaviour / numerics must not change** → configure the equivalence gate. Configuring cases is what opts the
+     project in: from then on it runs automatically from the clean stage on whenever a branch changes existing
+     production code. Projects without such a rule get no cases (most requirements change behaviour on purpose):
+     - `commands.release`: the build that ships, without coverage or sanitizer flags (cmake-clang has a default);
+       QA and the demos run its binary, never the instrumented one;
+     - `equivalence.cases`: one or more real runs of the product that finish in seconds (small model, few steps),
+       written so they produce their outputs into `{out}`. Helper scripts go into `.gauntlet/equivalence/` and are
+       called through `{kit}`; `{root}` is the tree being run (the original at base, or the branch):
+       ```json
+       "equivalence": { "cases": [{ "name": "example model, 600 steps",
+         "run": "python3 \"{kit}/equivalence/run_example.py\" --exe \"{root}/tmp/build-release/app\" --root \"{root}\" --out \"{out}\"" }] }
+       ```
+       Default comparison is bit-identical, which is what "must not change" means. Only if the project itself names
+       a tolerance, set `tol` — and then also `dtype` / `header` / `frame` matching each output format, or the
+       comparison is meaningless.
+     - Validate the cases now: `node .gauntlet/gauntlet.mjs equivalence --force` (the original against itself) must
+       report EQUIVALENCE: PASS. It also rejects **weak** cases: an output that is all zeros, mostly zeros, or only
+       numerical noise (largest value below `minSignal`, default 1e-6) cannot show a change in the program. Run long
+       enough that the computation the red line protects really happens (e.g. the wave reaches the receivers and the
+       boundary), and compare the outputs that carry it (e.g. the final wavefield, not just a near-empty gather).
+       Set `minSignal` only when the project's outputs are legitimately that small, and say why in the profile.
+     - **A case must run fixtures that are the same in base and branch**: never the repository's own `.gauntlet/`
+       (features, qa, out, config) — the pipeline itself changes those, and a case that reads them can never pass
+       after the spec stage (this squad once lost a whole clean round to that). Copy an example or fixture into
+       `{out}` and run there.
+   - **Every declared entry point needs a load / smoke check.** survey.md lists them ("声明的加载入口": a package's
+     main / exports / bin, pyproject scripts). Code that no test imports is invisible to every gate: a removed import
+     or a wrong "am I the main module" check passes all tests. For each entry point make sure a test (or an
+     equivalence case) loads it the way users do — import the plugin entry with its host modules stubbed, run the
+     bin **through a symlink** like a package manager installs it — and write it into the Red lines table.
+   - **Other checkable rules** (where files go, forbidden dependencies, …) → the matching gate (`commands.arch`,
+     QA constraints, …).
+   - Record every red line in the profile's "Red lines" section with how it is enforced (gate name) — or, if it
+     cannot be checked by a machine, say so and why. The Leader shows this table to the user.
+8. **Watch the clock**: if one full `test` run takes more than ~10 minutes, every mutant pays that cost. Record it
+   under "Pitfalls" and in the result's `next:` suggest a faster `commands.mutationTest` (a subset or a run without
+   coverage) for a human to approve — you may not set it yourself.
+9. **Write the profile** `.gauntlet/GAUNTLET.md` (template below). `base:` is required: survey.md's "branch base"
+   gives it; if it says "not found", find out the default branch before writing it, otherwise the change set the
+   gates measure cannot be computed (the gates report an error). Commit `.gauntlet/GAUNTLET.md`,
+   `.gauntlet/gauntlet.config.json`, the architecture rules, `.cbmignore` (written by `graph`) and
+   `.gauntlet/baseline.json` (only in ratchet mode).
+   Write `rules: created` (first time) or `rules: changed` (config / architecture rules / baseline changed) in the
+   result, plus "rule files drafted: need human confirmation".
 
-## GAUNTLET.md 模板
+## GAUNTLET.md template
 
-档案写给**下一个全新启动的 agent**：只写它需要、且从代码里不容易看出来的事实；每条命令都是你实际跑通过的。
-档案是否过期以**最后一次提交 GAUNTLET.md 的 commit** 为准（之后构建 / CI / 质量配置有变化就要刷新），所以档案要和配置改动放在同一个提交里。
+The profile is written for **the next agent that starts from nothing**: only facts it needs that are not obvious
+from the code; every command is one you actually ran. Whether the profile is stale is judged by **the last commit
+that touched GAUNTLET.md** (later build / CI / quality-config changes call for a refresh), so commit the profile
+together with config changes.
 
 ```markdown
-# GAUNTLET.md — 项目档案
+# GAUNTLET.md — project profile
 
-commit: `<写档案时的 commit 短哈希>`　base: `<默认分支>`　更新：<日期>　适配器：<commands | cmake-clang>　棘轮：<开 / 关（基线 N 项）>
+commit: `<short hash when written>`　base: `<default branch>`　updated: <date>　adapter: <commands | cmake-clang>　scope: <changes | all (why)>　test selection: <testSelect / ctest File API / none (why)>
 
-## 一句话
-这个项目是什么、交付物是什么（库 / 命令行 / 服务 / GUI）。
+## In one sentence
+What this project is and what it delivers (library / CLI / service / GUI).
 
-## 构建、测试、运行（已实际运行）
-| 做什么 | 命令 | 耗时 | 备注 |
+## Build, test, run (actually run)
+| What | Command | Time | Notes |
 |---|---|---|---|
-| 构建 | … | … | 需要的环境变量、服务、数据 |
-| 全部测试 | `node .gauntlet/gauntlet.mjs test` | … | 底层实际执行的命令 |
-| 运行交付物 | … | | QA 用它验证 |
+| Build | … | … | environment variables, services, data it needs |
+| All tests | `node .gauntlet/gauntlet.mjs test` | … | the underlying command |
+| Run the product | … | | QA uses this |
 
-## 代码地图
-- 产品代码：哪些目录、各自负责什么；入口在哪（谦卑对象）。
-- 测试：单元测试在哪、用什么框架；验收测试放在哪（新写的照这个位置放）。
-- 模块与依赖方向：和架构规则一致的一句话版本。
+## Code map
+- Production code: which directories, what each is responsible for; where the entry points are (humble objects).
+- Tests: where unit tests live, which framework; where acceptance tests go (new ones follow this).
+- Modules and dependency direction: a one-line version matching the architecture rules.
 
-## 现有规矩
-- CI 里跑什么、本地怎么复现；已有的 linter / 格式化工具及其配置文件。
-- 命名、错误处理、日志、提交信息等约定（只写真实观察到的）。
+## Existing conventions
+- What CI runs and how to reproduce it locally; existing linters / formatters and their config files.
+- Naming, error handling, logging, commit-message conventions (only what you actually observed).
 
-## 质量现状
-- 第一次量出来的结果：超标函数、覆盖率、告警……；棘轮基线摘要（如有）。
+## Quality today
+- Time of one full test run; code graph: share of production files reachable from tests (from `graph`).
+- Only with `"scope": "all"`: the first measurement (offending functions, coverage, warnings, …).
 
-## 坑
-- 本机 / 服务器问题、慢测试、偶发失败、需要但不能入库的密钥（只写名字，不写值）。
+## Red lines
+| Rule (where it comes from) | Enforced by |
+|---|---|
+| e.g. "numerical results must not change" (AGENTS.md) | `equivalence` gate: 1 case, bit-identical |
+| e.g. "intermediate files only in tmp/" (AGENTS.md) | config: buildDir / outDir under tmp/; QA constraint |
+| e.g. "review by a domain expert" (CONTRIBUTING) | not machine-checkable: human review of the evidence pack |
+
+## Pitfalls
+- Machine / server issues, slow tests, flaky tests, secrets that are needed but cannot be committed (names only).
 ```
 
-## 规则
+## Rules
 
-- 档案里每条命令都必须是你实际跑通过的；推测的内容标明"未验证"。
-- 不写密钥、令牌、密码的值；不提交本机路径相关的配置（那些写进 `.gauntlet/gauntlet.local.json`）。
-- `sources` 宁多勿少：漏掉的产品代码不会被度量。不确定是不是产品代码时，写进档案并 NEED-HUMAN 问人。
-- 已经存在的 `.gauntlet/gauntlet.config.json`、架构规则、基线：只能在档案过期且确有必要时改，每处改动在结果里逐条列出（`rules: changed`）；
-  放松阈值、收窄 `sources`、放松基线永远不允许（gauntlet-core 第 5 节）。
-- 收尾按 gauntlet-core 第 6 节；小结比普通阶段多一行 `rules: created | changed | unchanged`，Leader 据此决定要不要请用户确认。
+- Every command in the profile must be one you actually ran; mark guesses "unverified".
+- Never write the values of secrets, tokens or passwords; never commit machine-specific config (that goes into
+  `.gauntlet/gauntlet.local.json`).
+- `sources`: better too much than too little — production code that is left out is never measured. If you are not
+  sure something is production code, note it in the profile and ask via NEED-HUMAN.
+- An existing `.gauntlet/gauntlet.config.json`, architecture rules or baseline may be changed only when the profile is
+  stale and the change is really necessary; list every change in the result (`rules: changed`). Loosening thresholds,
+  narrowing `sources` or loosening the baseline is never allowed (gauntlet-core section 5).
+- Finish as in gauntlet-core section 6; the summary has one more line than other stages:
+  `rules: created | changed | unchanged`. The Leader uses it to decide whether to ask the user.

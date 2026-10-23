@@ -30,7 +30,12 @@ dsh plugin --profile web add github:Iamtianyuyang/dsh-crap-agents
 用桌面版 DeepSeek Harness 的话，把 `--profile web` 换成 `--profile desktop`，装完重启应用。
 本地开发：在仓库目录里 `dsh plugin --profile web add "link:$(pwd)"`，改完刷新即可。
 
-> 需要目标机器有 git、Node 18.17+（dsh 自带的 runtime 已满足），以及项目自己平时构建 / 测试用的工具。
+> 需要目标机器有 git、Node 18.17+（dsh 自带的 runtime 已满足）、代码图工具 [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)，
+> 以及项目自己平时构建 / 测试用的工具。代码图工具是必需的（`doctor` 会检查）：
+>
+> ```bash
+> npm install -g codebase-memory-mcp
+> ```
 
 装好后会得到：
 
@@ -192,6 +197,73 @@ node ../../kit/gauntlet.mjs evidence --title "保龄球计分"
 会实际跑通并写进项目档案 `.gauntlet/GAUNTLET.md`。默认质量标准、棘轮模式（旧代码只收紧不放松）、配置项等细节见
 各技能和 [`kit/`](kit) 工具，用法都是 `node .gauntlet/gauntlet.mjs <命令>`。
 
+### 为什么不会跑几天：只量改动，只跑相关的测试
+
+早期版本对一个已有项目可能跑好几天，根子在设计：所有闸门量**整个仓库**，每个变异体、每一轮都跑**全部测试**，
+成本跟仓库和测试集的大小成正比，而不是跟这次的改动成正比。现在流水线以**改动**为单位，代码图
+（[codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)）决定每一步要碰哪些代码、跑哪些测试：
+
+- **只量改动**（`"scope": "changes"`，默认）：改动集 = 本分支相对 base 改过的产品代码。静态分析、clang-tidy、cppcheck
+  只分析改动的文件（C/C++ 再加包含了改动头文件的编译单元）；复杂度、CRAP、重复代码、架构只看改动的行和改动的函数；
+  覆盖率看"改动的行有没有被测到"；变异测试只变异改动的行。没碰过的旧代码显示为"范围外"，不会让闸门失败，
+  也不需要摸底先把整个仓库量一遍做基线。需求本身是清理旧代码时才设 `"scope": "all"`。
+- **旧函数按"改了多少"判断**：本分支碰到的旧函数只要增长不超过 `legacy.complexityGrowth`（默认圈复杂度 +2）和
+  `legacy.linesGrowth`（默认 +20 行）、不加深嵌套、不加参数，就不要求它整体达标——不会因为给 120 行的旧 `main`
+  加一个调用就把整个 `main` 重写一遍。更大的新逻辑要提取成新函数，新函数按阈值判断。
+- **项目的红线变成闸门**：摸底把 AGENTS.md 之类文档里"不许改变数值 / 输出"的规则写成 `equivalence.cases`
+  （真实运行产品的小用例）和 `commands.release`（不带覆盖率插桩的发布构建）。配置了用例的项目，本分支一旦改了已有的产品代码，
+  `equivalence` 闸门（清理、加固、证据包都包含）就在 git worktree 里构建 base 版本，和本分支各跑一遍用例，
+  每个输出逐位比较；不一致就不能通过。需求本身要改变某个输出时，由规格阶段起草 `.gauntlet/equivalence-accepted.json`
+  并经你确认，证据包会逐条列出。没有这条红线的项目不配置用例，也就不做这项对比。QA 和演示也用发布构建，不用插桩过的二进制。
+  摸底验证用例时会拒绝"太弱"的用例（输出全 0、几乎全 0 或只是数值噪声）。
+- **只跑相关的测试**：每个变异体只跑**真正执行过它那一行**的测试文件（逐测试覆盖率：每个测试文件单独跑一次带覆盖率，
+  结果缓存到代码或测试变了为止），快的测试文件先跑、慢的只在变异体活下来时才跑；找不到时退回代码图"能到达这个文件的测试"。
+  变异体在多个沙箱（仓库的 git worktree 副本，`mutation.jobs`，默认 CPU 数的四分之一、最多 8 个）里并行跑，工作区本身不被改动。
+  `next` 的中间轮只跑能到达改动的测试（加上本分支改过的测试文件）。commands 适配器用 `commands.testSelect`
+  （带 `{files}` 的测试命令；`commands.mutationTest` 也可以带 `{files}`，变异体就不用覆盖率插桩），cmake-clang 用 CMake File API
+  把 ctest 用例对应到源文件，自动选择。选择只会让结果偏保守（漏选的测试最多让一个变异体被误报为存活），不会让闸门误判通过：
+  确认 DONE 的那一次跑全部测试，证据包的 `full` 复验在全部测试上抽查沿用的结果，有一处不一致就全部重测。
+- **每轮只重跑该重跑的**：`next` 第二轮起只重跑上一轮失败的闸门；只读产品代码的闸门在产品代码没变时沿用结果；
+  存活变异体只在能到达它的测试变了时才重测。
+- **看得见进度，不用干等**：kit 运行时持续写 `.gauntlet/out/progress.json`，「流程进度」面板顶部的实时卡片显示
+  当前命令和第几轮、正在哪一步、进度（如 `37 / 112 变异体`）、**正在处理哪个函数**（文件:行号、变异算子、只跑几个相关测试文件）、
+  预计还要多久（按本轮实测，或按上次同一步的耗时），以及各步骤完成 / 沿用的情况；两轮之间显示上一轮的结论和 agent 正在改代码。
+- **安全网**：一次变异测试最多 `mutation.maxMinutes`（默认 45 分钟），没测完的下一轮接着测；每条构建 / 测试命令最多
+  `commandTimeoutMin`（默认 60 分钟）；每个阶段最多 `loop.maxRounds` 轮 / `loop.maxHours` 小时实际工作时间（默认 20 / 4）；
+  Leader 同一阶段返工 2 次、或回退 2 次就停下问你。卡住时可以先要一份**阶段性证据包**看清现状。
+
+### 整库清理：先钉住行为，再重构；分档目标；多个 agent 并行
+
+需求本身是清理已有代码时（`"scope": "all"`），要处理的是一大片没有测试的旧代码。拿这支小队清理它自己（约一万行，kit 零测试）
+的第一次运行花了 17.5 小时：先重构、再补断言，重构时几乎只有"测试还绿着"在兜底（漏过了两处回归），为了过 CRAP 写的
+只跑不断言的测试后来还要重写；一个 agent 一次会话只能杀一百来个变异体。现在清理型需求换了流程：
+
+- **先钉住行为（pin），再重构**：编码之后先派加固 agent 用 `pin` 闸门组合（测试 + 覆盖率 + 变异分 + 等价性，不量复杂度）
+  给现有行为写**带断言的**特征测试，再让清理阶段在这张安全网上重构，最后加固只补重构改动到的部分。
+- **分档目标**（`tiers`）：一万行代码要一个变异分是错的目标。摸底按代码地图提出分档，你在摸底检查点确认：做判定的核心逻辑
+  （例如 `mutationScoreMin: 0.9`）要求高，报告、格式、胶水代码设成 `"ratchet"`（不低于 `baseline --mutation` 记下的分数，只升不降）。
+  变异报告、闸门、`next` 和证据包都按档判断，达标的档里的存活者不再出现在待办清单里。
+- **多个 agent 并行（分片）**：`gauntlet shards --profile <pin|cleaner|hardener>` 把待处理条目按模块切成产品文件互不重叠、
+  一次会话做得完的若干片；Leader 用 `shard open` 给每片开一个 git worktree（在仓库旁边），在**同一条消息**里并行派出多个子 agent
+  （dsh 并行执行同一步里的多个子 agent 调用）；每个 agent 在自己的分片里跑 `next`，闸门只判这一片的文件；做完后 Leader
+  `shard merge` 合并，再派一次确认。
+- **入口要有冒烟检查**：摸底列出 `package.json` 的 main / exports / bin 和 pyproject 的 scripts，每个入口都要有一个按用户方式加载 /
+  运行它的检查——没有测试导入的入口文件对所有闸门都是盲区。
+
+### 这些规则从哪来
+
+| 规则 | 出处 | 在小队里 |
+|---|---|---|
+| 只量改动、变异只看改动的行 | Google 的变异测试实践（在代码评审里只对改动的行做变异） | `"scope": "changes"`（默认） |
+| 存活者是评审线索，可以"经评审接受" | Google：存活的变异体作为评审意见出现，开发者可以标"没用" | `mutation-accepted.json` 里的 `"kind": "low-value"`（只限提示文字、漏网的日志行），证据包单独列出 |
+| 不变异只做日志的行 | Google 的 arid 节点 | `mutation.arid`（内置日志调用模式，可追加） |
+| 先钉住行为，再改；新逻辑进新函数 | Michael Feathers《修改代码的艺术》：特征测试、Sprout Method | 清理型的 pin 阶段；改动型里旧函数只许小幅增长 |
+| 钉行为先用 golden master | Llewellyn Falco 的 approval tests | pin 阶段先在最高层的稳定边界上对大量输入做快照，之后快照冻结 |
+| 不搞大扫除，童子军规则 | Robert C. Martin | 清理型需求必须分档，核心档要小，其余 `ratchet`；大仓库建议按模块拆 |
+| CRAP 门槛 30 | Alberto Savoia 的 crap4j 默认值 | `crapMax: 30`；复杂度另由 `complexityMax: 10` 管 |
+| 分档的变异门槛 | PIT / Stryker 的实践（按模块、60–80% 区间） | 核心档例如 0.8，其余 `ratchet` |
+| 多个 agent 并行、各用新上下文 | 编排者 + worker 的多 agent 模式，git worktree 隔离 | 分片：plan → 并行分片 → merge → confirm |
+
 ### 小队写的文件只放在 `.gauntlet/`
 
 除了产品代码和项目自己的测试，小队在目标仓库里写的所有东西都在 `.gauntlet/` 一个文件夹里，根目录不会多出别的：
@@ -233,9 +305,18 @@ lib/index.js             Cordis 插件入口：声明 preset、每阶段模型�
 lib/preset.js            「Gauntlet 小队」preset 的组成（基于 dsh standard 模式）
 lib/stages.js            7 个阶段子 agent：工具名、技能、persona
 lib/client.js            客户端界面：阶段模型设置 + 主会话流程进度与阶段详情
-prompts/leader.md        Leader 的编排协议（就是 Leader 的系统提示）
-skills/gauntlet-*/       10 个技能：共同规则 + 每个阶段做什么 + 两个工具链片段（只在这个模式里注册）
+prompts/leader.md        Leader 的编排协议（就是 Leader 的系统提示，英文）
+skills/gauntlet-*/       10 个技能（英文）：共同规则 + 每个阶段做什么 + 两个工具链片段（只在这个模式里注册）
 kit/                     Gauntlet 工具本体（零依赖 Node ESM，从上游同步）+ install-kit.mjs
+  gauntlet.mjs           命令行入口（gate / next / mutate / graph / evidence …）
+  lib/core/              配置、路径、语言识别、标准报告解析
+  lib/acceptance/        Gherkin 解析、验收测试生成
+  lib/adapters/          commands 适配器；cmake/ 下是 CMake + clang 的构建与编译数据库
+  lib/gates/             各个闸门：static、tidy、cppcheck、dup、crap、arch、sanitize、mutate、ratchet
+  lib/qa/                真实运行的检查：QA / 约束、等价性对比、演示录制、写出范围检查
+  lib/loop/              增量循环：next（待修清单、预算）、graph（代码图与输入哈希）
+  lib/report/            证据包：报告、组件、主题、架构图、模块草图
+  lib/setup/             第 0 阶段摸底
 scripts/sync-kit.mjs     从上游同步 kit/
 examples/bowling-js/     通用方式示例（JavaScript，零依赖）
 examples/roman-kata/     CMake + clang 深度分析示例（C++），含录像、教程、架构图

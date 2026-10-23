@@ -1,76 +1,142 @@
 ---
 name: gauntlet-harden
-description: Gauntlet 第 4 阶段（Hardener）：用变异测试找出测试没守住的代码行，补测试杀死全部存活变异体并达到覆盖率阈值；处理等价变异体。
+description: Gauntlet stage 4 (Hardener) — use mutation testing to find code lines the tests do not pin down, add tests until every surviving mutant is killed (or each tier meets its target) and coverage meets its threshold; handle equivalent mutants. In a clean-up it also runs before the clean stage as "pin" (profile pin), pinning existing behaviour; big runs are split into shards worked on in parallel.
 ---
 
-# 加固阶段（Hardener）
+# Harden stage (Hardener)
 
-覆盖率只说明"代码被执行过"，不说明"行为被检查过"。变异测试每次把代码改一个符号
-（`<`→`<=`、`+`→`-`、`true`→`false`、条件取反、常数 +1……），如果测试仍然全部通过，
-说明那一行的行为没有被任何断言锁住——这就是"存活变异体"。你的目标：**零存活**。
+Coverage only says "this code ran", not "its behaviour was checked". Mutation testing changes one token at a time
+(`<`→`<=`, `+`→`-`, `true`→`false`, negated conditions, constant +1, …); if the tests still all pass, no assertion
+pins that line's behaviour — that is a "surviving mutant". Your goal: **zero survivors**.
 
-**先看 `.gauntlet/gauntlet.config.json` 的 `adapter`**，再读对应适配器技能的「4 加固」一节：
-`commands`（或没写）→ gauntlet-adapter-commands；`cmake-clang` → gauntlet-adapter-cmake。
+**First look at `adapter` in `.gauntlet/gauntlet.config.json`**, then read the "4 Harden" section of the matching
+adapter skill: `commands` (or not set) → gauntlet-adapter-commands; `cmake-clang` → gauntlet-adapter-cmake.
 
-## 步骤
+## Which run this is (read the task's `Stage:` and `Shard:` lines)
 
-1. 读任务、切分支（gauntlet-core）。
-2. `node .gauntlet/gauntlet.mjs test` → `node .gauntlet/gauntlet.mjs static` → `node .gauntlet/gauntlet.mjs mutate`
-   （默认变异**全部产品代码**、不限数量——每个变异体都要重新构建并跑全部测试，
-   第一次可能要跑几个小时，这是正常的，不要为了快去缩小范围；结果在输出目录的 `mutation.json`）。
-   之后再跑时，函数没改过的变异体直接沿用上次"已杀死"的结果（输出里标 `(cached)`），只重测改过的函数和存活者，
-   所以补测试的循环会快很多。不要删输出目录里的 `mutation-cache.json`，也不要为了"保险"每次都加 `--fresh`。
-3. 逐个处理存活者（见下表）。修的过程中可以用 `--files a,b` 只重跑相关文件，
-   **最后一次必须是不带 `--files` 的完整运行**。证据包阶段的 `gate --profile full` 会不用缓存全部重测一遍。
-   - 程序入口的存活者：给真实入口加冒烟测试（写法见适配器技能），不要把入口排除掉。
-4. 用 `next --profile hardener` 循环（gauntlet-core 第 7 节），直到 DONE。
-5. 提交、推送、收尾；summary 写清：杀死了多少、加了哪些测试、接受了哪些等价变异体。
-
-## 处理存活变异体
-
-| 状态 | 含义 | 处理 |
+| Task says | Profile | What you do |
 |---|---|---|
-| `SURVIVED` 边界类（`<`→`<=`、`5`→`6`） | 缺边界值测试 | 在已有的表里加行：刚好在边界、边界 ±1 |
-| `SURVIVED` 逻辑类（`&&`→`\|\|`、条件取反） | 缺"另一半"条件的测试 | 表里加行，让每个子条件单独为真/为假各一次 |
-| `SURVIVED` 返回值（`true`→`false`） | 返回值从未被断言 | 给已有用例补上返回值 / 退出码的断言 |
-| `NO_COVERAGE` | 这一行从未被执行 | 补测试执行它；如果确实走不到，那是死代码——删掉（删代码需在 summary 里说明） |
-| `TIMEOUT` | 变异导致死循环，已算作杀死 | 无需处理 |
-| `COMPILE_ERROR` | 变异体编译不过，已忽略 | 无需处理 |
+| `harden` | hardener | the normal stage after clean: steps below |
+| `pin` | pin | clean-up of existing code, **before** refactoring: pin today's behaviour (section "Pin mode") |
+| `… (plan)` | pin / hardener | measure, then plan shards instead of fixing (section "Plan, shards, confirm") |
+| `Shard: <id>` + a directory | pin / hardener | work only on that shard (gauntlet-core section 4a), then the steps below |
+| `… (confirm)` | pin / hardener | after the Leader merged the shards: one complete gate on the merged branch |
 
-补测试按 gauntlet-core 第 8 节写成表驱动：**先往已有的表里加一行**，一个变异体不值得一个新的测试函数；
-同一个函数的几个存活者通常一张表就能全部杀死。
+## Pin mode (profile `pin`, clean-up requirements)
 
-**优先补验收场景以外的单元测试**。如果一个存活者暴露的是"需求没写到的行为"
-（例如空输入时会崩溃），既要加单元测试，也要在小结的 next 里记一笔：需求可能缺一条场景，必要时回到规格阶段补。
+The clean stage is about to restructure code that has few or no tests. Before it may, the behaviour must be pinned.
+Pin **wide and cheap first, deep only where it matters** (Feathers' characterization tests, Falco's approval tests):
 
-## 运行时检查（sanitizer）
+1. **Golden masters at the highest stable boundary.** Drive the product the way users do — the CLI commands, the
+   public API, the report or file it writes — over **many inputs** (option combinations, the example fixtures, edge
+   inputs: empty, invalid, boundary values) and approve the **whole output** as a snapshot committed next to the test
+   (Node: `t.assert.snapshot(...)` / `node --test --test-update-snapshots` once; Python: approved files or
+   `syrupy`; C/C++: expected-output files compared by the test). Normalise only what really varies between runs
+   (timestamps, durations, absolute and temp paths, PIDs) and say what in the test. One such test pins hundreds of
+   lines; a table of inputs × one snapshot each is the cheapest way to raise the mutation score of a whole module.
+2. **Then let mutation show what is still loose**, tier by tier. Output and formatting code is usually pinned by
+   step 1 already. Add targeted unit tests with exact assertions only where survivors remain in a tier that misses
+   its target — typically the core decision logic.
+3. Assert what the code **does**, even where it looks wrong. Fixing it is not your job and would break equivalence;
+   write the suspicious behaviour into the result's `next:` for the human.
+4. **Keep slow end-to-end tests in small files**, one boundary per file. Mutation testing selects test *files*
+   by the lines they execute; one big file that drives the whole CLI is selected for every mutant and costs its full
+   run each time. Many small files let each mutant run only the one that matters. Prefer in-process calls of the
+   same boundary (the command's function with a fixture project) over spawning a process when both pin the output.
+5. Do not refactor production code beyond the smallest seam (a parameter, an exported helper); the clean stage
+   restructures with your tests as its safety net. The snapshots you approve are frozen from then on
+   (gauntlet-core section 5): later stages may never regenerate them.
 
-`hardener` 闸门还会用 AddressSanitizer / UndefinedBehaviorSanitizer 跑全部测试（CUDA 测试再用 compute-sanitizer），
-抓"测试通过但内存其实越界、释放后还在用、整数溢出、GPU 访存越界或竞争"这类问题。每一处报告都是真 bug：
+Equivalence cases are the same idea across versions (the original at base against this branch); approval tests are
+the golden master inside the test suite, so they also kill mutants. Tier targets (gauntlet-core section 4): a tier
+with a number must reach it; a `"ratchet"` tier only must not drop.
 
-- 按报告里第一个落在产品代码的位置修，再补一个能稳定复现它的测试（修之前在 sanitizer 下失败，修之后通过）；
-- 不许关掉 sanitizer、跳过或删掉触发它的测试、用 `#ifdef` 绕开检测；
-- 报告"没有运行"（工具链不支持、找不到 compute-sanitizer）不算你的失败，在结果里照抄原因即可，证据包会请人确认。
+## Plan, shards, confirm (big runs)
 
-## 等价变异体（真的测不到）
+A stage with hundreds of survivors is too much for one session. The Leader splits it:
 
-有些变异体在可观察行为上与原代码完全相同（例如一个保护条件，两条路径都输出同样的错误）。
-处理顺序：
+1. **Plan** (`… (plan)`): run `node .gauntlet/gauntlet.mjs gate --profile <p>` **once**. Do not loop `mutate` until it
+   is complete: the plan only needs to know where the open work is, and untested mutants are open work that each
+   shard tests on its own files (one complete run of a code base whose code only slow end-to-end tests reach can take
+   hours). In pin mode, when tiers have `"ratchet"` targets and this run's mutation is complete (no NOT_RUN), record
+   them now: `node .gauntlet/gauntlet.mjs baseline --mutation`; otherwise the confirm run records them. If the gate
+   passes → PASS, no shards. Otherwise `node .gauntlet/gauntlet.mjs shards --profile <p>`, commit (the plan `.gauntlet/shards.json` is a hand-off: the shards are opened from the committed branch), and finish
+   with FAIL and the `shards:` line (gauntlet-core section 6). Do not fix anything in a plan run.
+2. **Shards**: one agent per shard, in parallel, each in its own worktree (gauntlet-core section 4a), looping
+   `next --profile <p>` until DONE / BUDGET.
+3. **Confirm** (`Stage: … (confirm)`): the Leader merged the shards. Run `gate --profile <p>` on the merged branch;
+   in pin mode run `baseline --mutation` again (the baseline only rises). PASS if the gate passes; otherwise FAIL with
+   what is left (the Leader may plan another, smaller round of shards).
 
-1. 先尝试**重构**让它不再等价（往往说明代码有冗余）。
-2. 实在不行，把它写进 `.gauntlet/mutation-accepted.json`：
+## Handling surviving mutants
+
+| Status | Meaning | What to do |
+|---|---|---|
+| `SURVIVED` boundary (`<`→`<=`, `5`→`6`) | a boundary test is missing | add rows to the existing table: exactly at the boundary, boundary ±1 |
+| `SURVIVED` logic (`&&`→`\|\|`, negated condition) | the "other half" of a condition is untested | add rows so each sub-condition is true and false on its own |
+| `SURVIVED` return value (`true`→`false`) | the return value is never asserted | assert the return value / exit code in existing cases |
+| `NO_COVERAGE` | the line never runs | add a test that runs it; if it really is unreachable, it is dead code — delete it (say so in the summary) |
+| `NOT_RUN` | the run hit `mutation.maxMinutes` before this mutant | nothing to fix: the next round tests it |
+| `TIMEOUT` | the mutant caused an endless loop; counts as killed | nothing |
+| `COMPILE_ERROR` | the mutant does not compile; ignored | nothing |
+
+Tests are table-driven (gauntlet-core section 8): **first add a row to an existing table** — one mutant is not worth a
+new test function; several survivors of one function are usually killed by one table.
+
+**Prefer unit tests over more acceptance scenarios.** If a survivor exposes behaviour the requirement never mentions
+(e.g. a crash on empty input), add a unit test and also note in the result's `next:` that the requirement may be
+missing a scenario; the spec stage can add it if needed.
+
+## Run-time checks (sanitizers)
+
+The `hardener` gate also runs all tests under AddressSanitizer / UndefinedBehaviorSanitizer (CUDA tests also under
+compute-sanitizer), catching "tests pass but memory is out of bounds, used after free, integer overflow, GPU
+out-of-bounds access or races". Every report is a real bug:
+
+- fix it at the first production-code location in the report, then add a test that reproduces it reliably (fails
+  under the sanitizer before the fix, passes after);
+- never turn the sanitizer off, skip or delete the test that triggers it, or dodge detection with `#ifdef`;
+- "not run" (toolchain unsupported, compute-sanitizer not found) is not your failure: copy the reason into the
+  result; the evidence pack asks a human to confirm.
+
+## Accepted mutants: equivalent or low-value
+
+Some mutants have exactly the same observable behaviour as the original (e.g. a guard whose two paths print the same
+error). In order:
+
+1. First try to **refactor** so the mutant is no longer equivalent (it often points at redundant code).
+2. Only if that fails, add it to `.gauntlet/mutation-accepted.json`:
    ```json
    [
      { "file": "src/app/cli.cpp", "op": "4 -> 5", "source": "arg.size() <= 4",
-       "reason": "长度保护只防 std::stoi 溢出；5 位数同样超出 3999，两条路径输出相同，行为等价。" }
+       "reason": "The length guard only protects std::stoi from overflow; 5 digits also exceed 3999, both paths print the same output, so the behaviour is equivalent." }
    ]
    ```
-   `reason` 必须具体到"为什么两种写法的可观察行为相同"。
-   这些条目会在证据包里**单独标黄**给人类核对——滥用会被人类驳回并返工。
+   `reason` must say concretely why both versions behave the same observably. These entries are **highlighted
+   separately** in the evidence pack for a human to check — abuse gets rejected and sent back.
 
-## 规则
+**Low-value mutants** change behaviour, but nothing a test should pin — like a code-review comment a reviewer marks
+"not useful" (Google surfaces surviving mutants exactly that way). Only two cases qualify:
 
-- 不改产品代码的行为；可以为了可测性做小的结构调整（例如注入依赖），但要保持 cleaner 闸门仍然通过。
-- 不删除、不弱化已有断言；不提高阈值。
-- 测试要有意义：一个测试一个行为，名字描述行为（`RejectsNumbersAbove3999`），不要写只为杀变异体的"魔法断言"。
-- 变异算子：比较/算术/逻辑运算符、`true/false`、条件取反、常数 +1……（具体见适配器技能）。
+- the **wording** of a message (an error text, a hint) whose exact words no requirement or scenario fixes — the
+  message's presence and its exit code still need a test;
+- a **log line** the arid patterns (`mutation.arid`) missed, e.g. a multi-line logging call.
+
+```json
+{ "file": "src/app/cli.js", "op": "\"bad input\" -> \"\"", "source": "usage: roman <n>", "kind": "low-value",
+  "reason": "Wording of the usage hint; the CLI scenario asserts that a usage line is printed and the exit code is 2." }
+```
+
+Never for a condition, a comparison, a number, a return value, or anything a verdict, a calculation or a file format
+depends on. The evidence pack lists low-value entries apart from equivalent ones; the human rejects what does not
+fit.
+
+## Rules
+
+- Do not change production behaviour; small structural changes for testability (e.g. injecting a dependency) are
+  fine as long as the cleaner gate still passes.
+- Never delete or weaken existing assertions; never raise thresholds.
+- Tests must mean something: one behaviour per test (or per table row), names describe behaviour
+  (`RejectsNumbersAbove3999`); no "magic assertions" that exist only to kill a mutant.
+- Mutation operators: comparison / arithmetic / logical operators, `true/false`, negated conditions, constant +1, …
+  (details in the adapter skill).
