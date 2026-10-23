@@ -38,39 +38,41 @@
 
 ## 1. 派活给一个阶段子 agent
 
-调用该阶段的工具，给它一段**自包含的任务提示**（子 agent 全新启动、看不到这段对话，只能靠这段话 + 仓库文件 + 它的技能）：
+Turn 1 立即委派第 0 阶段（`gauntlet_surveyor`），**严禁在派活前调用 read / glob / grep / pwsh 做冗余探索**。
+
+调用阶段工具时，给它一段**极速执行的任务提示**（子 agent 全新启动、看不到这段对话，只能靠这段话 + 仓库文件 + 它的技能）：
 
 ```
 需求：<把用户的需求原文贴全，不要改写>
 分支：gauntlet/<短名>
 阶段：<N 阶段名>，你的 profile 是 <profile>
 返工说明：<首次为空；返工时写清上一轮哪些闸门不过、根因、用户说了什么>
-完成后按 gauntlet-core 第 6 节返回 GAUNTLET-RESULT。
+【极速执行硬性要求：严禁调用 skill 工具，严禁调用 send_message，严禁读取 .gauntlet/lib/**；只跑本阶段唯一验证命令；≤5 轮工具调用内完成本阶段并执行 git add -A && git commit；最后一条回复必须以 GAUNTLET-RESULT 开头，并输出全部 6 个纯文本交接字段（revision/changes/checks/risks/reproduction/nextAction），严禁空消息或中途停手】
 ```
 
-一次只派一个阶段，等它返回再决定下一步。
+**一次只派一个阶段，派活后立即结束当前回合（END TURN）**；严禁在后台执行时调用 `Start-Sleep`、`list_agents` 或重复 `read` 进行忙等轮询。等待系统后台完成通知（`<system-reminder>...finished`）后再进入下一步。
 
 ## 2. 看结果并推进
 
-子 agent 的最终输出是一段 `GAUNTLET-RESULT`：
+子 agent 的最终输出是一段 `GAUNTLET-RESULT` 及 6 项交接字段：
 
 ```
 GAUNTLET-RESULT: PASS          # 或 FAIL / NEED-HUMAN
-stage: 2-code
-profile: coder
-branch: gauntlet/<短名> @ <commit 短哈希>
-gates: spec ✅ build ✅ tests ✅ (25/25)
-loop: rounds=<next 的轮数> distance=<第一轮距离> -> <最后一轮距离>
-summary: 一两句话说明做了什么
-next: 给下一阶段的提示（可选）
+revision: <commit 短哈希>
+changes: <改动文件清单>
+checks: <执行的验证命令与退出码>
+risks: <风险说明或 none>
+reproduction: <复现验证命令>
+nextAction: <下一阶段名或已完成>
 ```
 
-- `PASS` 且 gates 全是 ✅ → 更新 todo，过人类闸门（第 5 节）后派下一阶段。
+- `PASS` 且 6 个交接字段齐全 → 更新 todo，过人类闸门（第 5 节）后派下一阶段。
+- 子 agent 回复为空、意外中途退出或缺少交接字段 → 在上限（每阶段最多 2 次）内以相同要求重新委派该阶段一次；不得跳过阶段。
 - `FAIL`（STALLED：离阈值的距离连续几轮没缩小）或 gates 里有 ❌ → 第 3 节「返工」。
 - `NEED-HUMAN`（需求有歧义 / 缺工具 / 需要审批的命令 / 要改架构或规则）→ 第 5 节「请用户确认」。
 - 工具结果以 `Error:` 开头（被取消、被拒绝启动、撞到 token 上限……）→ 第 4 节「中断」，**不是** FAIL。
 
-不相信口头"已完成"：没有 `GAUNTLET-RESULT: PASS` 和闸门输出就当作没完成。
+不相信口头"已完成"：没有 `GAUNTLET-RESULT: PASS`、实际闸门证据与交接字段就当作没完成。
 
 **文件只放 `.gauntlet/`**：除了产品代码和项目自己的测试，子 agent 写的文件都应在 `.gauntlet/` 里（gauntlet-core 第 3 节）。
 `git status --porcelain` 里根目录多出 `gauntlet-out/`、`qa/`、`features/`、`demo/`、`tmp/`、`GAUNTLET.md` 之类时，
