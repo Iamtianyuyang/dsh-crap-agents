@@ -30,7 +30,8 @@ CRAP（复杂度 × 未测试）→ 变异测试 → 架构边界 → QA。
 2. 提交信息带上阶段标签，例如：`[code] add roman parser`、`[clean] extract scorer`。
 3. **每次测试变绿就提交一次。** 你随时可能被中断（取消、token 上限、dsh 重启），没提交的改动就丢了；
    被重新派来时，先 `git status` / `git log --oneline` 看清已有进度，从那里继续。
-4. **不要** `git push`、不要开 PR——Leader 在用户审阅通过后才推送。**不要**在默认分支上提交，**不要** force push。
+4. **.gauntlet 默认忽略规则**：`.gauntlet/` 是本地质量闸门与评估脚手架，默认应被 `.gitignore` 或 `.git/info/exclude` 忽略。提交到仓库时严禁将 `.gauntlet/` 混入业务代码提交；阶段提交仅提交产品源码、工程自测及必要说明。
+5. **不要** `git push`、不要开 PR——Leader 在用户审阅通过后才推送。**不要**在默认分支上提交，**不要** force push。
 
 ## 3. 工具（.gauntlet/）与 shell
 

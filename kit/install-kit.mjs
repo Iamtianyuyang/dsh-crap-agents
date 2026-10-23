@@ -39,5 +39,27 @@ fs.cpSync(src, dst, {
   filter: (p) => !LOCAL_ONLY.includes(path.basename(p)),
 });
 const version = fs.readFileSync(path.join(src, 'VERSION'), 'utf8').trim();
+
+// 规则：.gauntlet 默认忽略（不污染目标仓库工作区）
+try {
+  const gitDir = path.join(target, '.git');
+  if (fs.existsSync(gitDir)) {
+    const excludeDir = path.join(gitDir, 'info');
+    const excludePath = path.join(excludeDir, 'exclude');
+    if (!fs.existsSync(excludeDir)) fs.mkdirSync(excludeDir, { recursive: true });
+    const content = fs.existsSync(excludePath) ? fs.readFileSync(excludePath, 'utf8') : '';
+    if (!content.split(/\r?\n/).some((l) => l.trim() === '.gauntlet/' || l.trim() === '.gauntlet')) {
+      fs.appendFileSync(excludePath, `${content && !content.endsWith('\n') ? '\n' : ''}.gauntlet/\n`);
+    }
+  }
+  const gi = path.join(target, '.gitignore');
+  if (fs.existsSync(gi)) {
+    const content = fs.readFileSync(gi, 'utf8');
+    if (!content.split(/\r?\n/).some((l) => l.trim() === '.gauntlet/' || l.trim() === '.gauntlet')) {
+      fs.appendFileSync(gi, `${content && !content.endsWith('\n') ? '\n' : ''}\n# gauntlet\n.gauntlet/\n`);
+    }
+  }
+} catch {}
+
 console.log(`installed gauntlet kit ${version} -> ${dst}`);
 console.log(`next: cd ${target} && node .gauntlet/gauntlet.mjs survey`);

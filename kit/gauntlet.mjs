@@ -292,12 +292,21 @@ function init(root, workdir, adapter, home) {
   if (!generic) ensureDir(path.join(root, L.stepsDir));
   const gi = path.join(root, '.gitignore');
   const local = `${H}gauntlet.local.json`;
-  const want = wd ? [`${wd}/`, local]
-    : home ? [`${H}out/`, `${H}build*/`, `${H}tmp/`, local, ...(generic ? [] : [`${L.generatedDir}/`])]
-    : generic ? ['gauntlet-out/', local] : ['build-gauntlet*/', 'gauntlet-out/', local, 'acceptance/generated/'];
+  const want = wd ? ['.gauntlet/', `${wd}/`, local]
+    : home ? ['.gauntlet/', `${H}out/`, `${H}build*/`, `${H}tmp/`, local, ...(generic ? [] : [`${L.generatedDir}/`])]
+    : ['.gauntlet/', generic ? 'gauntlet-out/' : 'build-gauntlet*/', local, 'acceptance/generated/'];
   const have = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
   const missing = want.filter((w) => !have.split(/\r?\n/).includes(w));
   if (missing.length) { fs.appendFileSync(gi, `${have && !have.endsWith('\n') ? '\n' : ''}# gauntlet\n${missing.join('\n')}\n`); console.log(`  update .gitignore (+${missing.join(' ')})`); }
+  try {
+    const gitExclude = path.join(root, '.git', 'info', 'exclude');
+    if (fs.existsSync(path.dirname(gitExclude))) {
+      const haveEx = fs.existsSync(gitExclude) ? fs.readFileSync(gitExclude, 'utf8') : '';
+      if (!haveEx.split(/\r?\n/).some((l) => l.trim() === '.gauntlet/' || l.trim() === '.gauntlet')) {
+        fs.appendFileSync(gitExclude, `${haveEx && !haveEx.endsWith('\n') ? '\n' : ''}.gauntlet/\n`);
+      }
+    }
+  } catch {}
   if (generic) {
     console.log(`\n下一步：编辑 ${cfgFile}
   sources / exclude   本项目的产品代码（任何语言）和要排除的测试、生成代码

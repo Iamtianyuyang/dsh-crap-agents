@@ -78,6 +78,8 @@ nextAction: <下一阶段名或已完成>
 `git status --porcelain` 里根目录多出 `gauntlet-out/`、`qa/`、`features/`、`demo/`、`tmp/`、`GAUNTLET.md` 之类时，
 按返工退回那个阶段，让它移进 `.gauntlet/` 或删掉。
 
+**.gauntlet 默认忽略规则**：`.gauntlet/` 仅作为本地流水线执行与质量评估脚手架，在工作区中默认加入 `.gitignore` 或 `.git/info/exclude` 忽略。阶段提交及收尾推送到远端时严禁将 `.gauntlet/` 目录提交至业务代码分支。
+
 **作弊一律按 FAIL 处理**：任何阶段靠下面这些手段过闸门，结果作废——
 修改 `.gauntlet/architecture.json`、`.gauntlet/gauntlet.config.json`（尤其 `sources`、`exclude`、`thresholds`）、`.gauntlet/qa/constraints.json`、`.gauntlet/` 下的工具代码
 （第 0 阶段起草配置 / 架构规则、第 1 阶段起草约束除外，且必须注明"需人工确认"）；创建、重建或放松棘轮基线 `.gauntlet/baseline.json`
