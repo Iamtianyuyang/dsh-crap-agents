@@ -10,6 +10,12 @@ description: Gauntlet 第 5 阶段（QA）：按 .gauntlet/qa/*.qa.md 在真实�
 
 ## 步骤
 
+QA 报告纪律（硬顶 2 次工具调用，第一条回复必须是工具调用，文字即失败）：
+1. 检查 constraints.json 必须为顶层数组；复用上游 junit.xml 测试结果或单次快速验证命令；
+2. 必须生成合规命名的 .gauntlet/qa/qa-report.json（绝非 report.md，verdict 为 pass，且覆盖每个 constraint ID 的 passing check）；
+3. 提交 test: qa report 并输出 6 行交接。
+完成标准：qa 报告 verdict 为 pass。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
+
 1. 读任务、切分支（gauntlet-core）。
 2. 构建：`node .gauntlet/gauntlet.mjs test`。真实产物在哪、怎么运行见适配器技能「5 QA」一节。
 3. 打开 `.gauntlet/qa/*.qa.md`，**逐条真实执行**，把实际结果原样记下来。

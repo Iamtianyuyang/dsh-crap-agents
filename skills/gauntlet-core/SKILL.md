@@ -145,27 +145,38 @@ Gauntlet 会话里 `survey` / `init` 默认就用这个布局（环境变量 `GA
 - 用 `#ifdef`、宏、特殊分支来"识别测试环境"。
 - 声称通过但没有贴出闸门输出。
 
-## 6. 阶段收尾（结果汇报格式）
+## 6. 阶段收尾（结果汇报格式与 6 项交接字段）
 
-阶段结束就把下面这段 `GAUNTLET-RESULT` 作为你的最终输出返回给 Leader（这是你这次被调用的结果）。收尾前先提交。
+阶段结束就把下面这段以 `GAUNTLET-RESULT` 开头的 6 项纯文本交接字段作为你的最终输出返回给 Leader（严禁空回复退出）。收尾前先完成原子提交。
 
 ```
 GAUNTLET-RESULT: PASS          # 或 FAIL / NEED-HUMAN
-stage: 2-code
-profile: coder
-branch: gauntlet/<短名> @ <commit 短哈希>
-gates: spec ✅ build ✅ tests ✅ (25/25)
-loop: rounds=<next 的轮数> distance=<第一轮距离> -> <最后一轮距离>
-summary: 一两句话说明做了什么
-next: 给下一阶段的提示（可选）
+revision: <commit 短哈希或完整 sha>
+changes: <本阶段原子变更说明与修改文件>
+checks: <实际验证命令、退出码与证据路径>
+risks: <潜在风险、边界遗留或无>
+reproduction: <复现或单次验证命令>
+nextAction: <下一阶段指引或完成>
 ```
 
-- **PASS** → 全部闸门达标。Leader 过人类闸门后派下一阶段。
-- **FAIL**（`next` 报 STALLED：离阈值的距离连续几轮没有缩小）→ 贴出失败的闸门和 next.md 要点；Leader 按「返工」决定回到哪个阶段。
+- **PASS** → 全部闸门达标且 6 个交接字段齐全。Leader 过人类闸门后派下一阶段。
+- **FAIL**（`next` 报 STALLED：离阈值的距离连续几轮没有缩小）→ checks 写清失败的闸门与证据路径，risks 写清根因；Leader 按「返工」决定回到哪个阶段。
 - **NEED-HUMAN**（需求有歧义 / 缺工具 / 需要改架构 / 要放松规则）→ 把具体问题和 A/B 选项写清楚；Leader 转交用户，等回复再继续。
   - **被拒绝的操作**：你是被委派的子 agent，需要审批的操作（装工具、联网下载、写仓库外的位置……）会被自动拒绝。
-    不要重试、不要换个写法绕过：在 summary 里写出**确切的命令**（一行、写明在哪个目录、用哪个 shell）和为什么需要它；
+    不要重试、不要换个写法绕过：在 changes/checks 里写出**确切的命令**（一行、写明在哪个目录、用哪个 shell）和为什么需要它；
     Leader 请用户批准后会代为执行，再把这个阶段重新派给你。
+
+### 极速执行与工具调用纪律（硬性上限）
+- **第一条回复必须直接发起工具调用**：严禁先输出纯文字解释，只输出文字即判定失败。
+- **各阶段工具调用硬性预算上限**：
+  - Surveyor（摸底）：≤ 3 次工具调用
+  - Specifier（规格）：≤ 3 次工具调用
+  - Coder（编码）：≤ 5 次工具调用
+  - Cleaner（清理）：≤ 2 次工具调用
+  - Hardener（加固）：≤ 3 次工具调用
+  - QA（真实验证）：≤ 2 次工具调用
+  - Reporter（证据包）：≤ 3 次工具调用
+- **平铺输出**：测试与覆盖率产物必须平铺直接输出至 `.gauntlet/out/junit.xml` 与 `cobertura.xml`，严禁在 Windows 上创建符号链接或目录连接（junction）。
 
 ### 棘轮模式（`.gauntlet/gauntlet.config.json` 里 `"ratchet": { "enabled": true }`）
 

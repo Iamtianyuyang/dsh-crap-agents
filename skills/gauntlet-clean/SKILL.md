@@ -75,6 +75,12 @@ node .gauntlet/gauntlet.mjs arch      # 架构违规
 
 ## 规则
 
+清理纪律（硬顶 2 次工具调用，第一条回复必须是工具调用，文字即失败）：
+1. 运行 node .gauntlet/gauntlet.mjs gate --profile cleaner；若仅因产物路径报错，修复 config 输出路径并重试一次；若因复杂度/CRAP 超标，拆解大函数或为未覆盖分支补测；
+2. 只改结构、不改行为：把圈复杂度降至 CC <= 8（目标 <= 6），CRAP 降至阈值以内；
+3. 重构完成后原子提交 refactor: clean crap；绝不上溢或反弹给上游阶段。
+完成标准：cleaner 为 PASS。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
+
 - 每次只做一个重构，然后 `node .gauntlet/gauntlet.mjs test`，保持全绿。
 - 不改验收场景、不删测试、不改公共行为（输出文本、退出码、数值结果都算行为）。
   例外：本分支新写的、彼此重复的单元测试可以合并成一张表（gauntlet-core 第 8 节）——每组输入都保留成表里的一行、

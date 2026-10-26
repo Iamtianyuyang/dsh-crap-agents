@@ -10,6 +10,11 @@ AI 写代码的速度远超人类读代码的速度。所以人类不读代码�
 
 ## 步骤
 
+全量复验纪律（硬顶 3 次工具调用，第一条回复必须是工具调用，文字即失败）：
+1. 确认 qa-report.json 覆盖全部约束，在干净工作树下运行 node .gauntlet/gauntlet.mjs gate --profile full 与 node .gauntlet/gauntlet.mjs evidence；
+2. 若仅因产物缺项失败，补齐后在干净树重验，确保 15/15 闸门全绿并提交 chore: evidence。
+完成标准：full 为 PASS 且证据包生成并已提交。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
+
 1. 确认在工作分支上（gauntlet-core）。
 2. **复验**（不相信前面阶段的口头结论）：
    ```

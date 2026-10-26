@@ -22,6 +22,13 @@ description: Gauntlet 第 2 阶段（Coder）：用 TDD 实现功能——验收
 
 ## 步骤
 
+代码与复杂度纪律（硬顶 5 次工具调用，第一条回复必须是工具调用，文字即失败）：
+1. 拆分聚焦的辅助小函数（CC <= 6），严禁深层嵌套与冗余分支，杜绝纯布尔日志辅助函数产生等价变异；
+2. 单元测试与验收测试名称与 Scenario 标题 1:1 精确对应；
+3. 针对每个真值与边界守卫（如 Length > 0、!= null、空字符串）同时编写空值/假值与有效非空双向用例，在编码期直接击灭变异体；
+4. 即使闸门暂未全绿，也必须保持原子提交（git add -A && git commit -m "feat: implement and test"）保存工作成果。
+完成标准：gate --profile coder 为 PASS。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
+
 1. 按 gauntlet-core 读任务、切分支（分支已由规格阶段创建）。
 2. `node .gauntlet/gauntlet.mjs next --profile coder --reset` 看全貌：哪些场景还没有验收测试、哪些测试失败。
 3. 一个场景一个场景地推进：

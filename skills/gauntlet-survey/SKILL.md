@@ -13,6 +13,12 @@ description: Gauntlet 第 0 阶段（Surveyor）：在规格之前摸清目标�
 
 ## 步骤
 
+极速执行硬性纪律（硬顶 3 次工具调用，第一条回复必须是工具调用，文字即失败）：
+1. 运行 node "$env:DSH_GAUNTLET_KIT_DIR/install-kit.mjs" . 并将需求/临时说明加到 .git/info/exclude（确保 .gauntlet/ 默认被忽略）；
+2. 配置 .gauntlet/gauntlet.config.json（adapter、sources、commands 与合理阈值），commands.test 必须平铺输出到 .gauntlet/out/junit.xml 与 cobertura.xml（严禁创建符号链接或 Windows junction）；commands.mutationTest 与测试项目严格对齐；
+3. 运行 node .gauntlet/gauntlet.mjs doctor 并提交 chore: survey。不跑冗余全量测试或变异测试。
+完成标准：doctor 全绿、GAUNTLET.md 写好。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
+
 1. 按 gauntlet-core 第 1、2 节读任务、确认在工作分支上（Leader 已建好）。
 2. **安装 / 更新工具**：按 gauntlet-core 第 3 节从 kit 来源安装 `.gauntlet/`——仓库里已经有也重新安装一次，工具才会跟上 kit 的更新
    （`.gauntlet/VERSION` 里是版本号）。有变化就和本阶段的其他改动一起提交，结果里写 `kit: <旧版本> -> <新版本>`。
