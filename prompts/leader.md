@@ -47,10 +47,12 @@ Turn 1 立即委派第 0 阶段（`gauntlet_surveyor`），**严禁在派活前�
 分支：gauntlet/<短名>
 阶段：<N 阶段名>，你的 profile 是 <profile>
 返工说明：<首次为空；返工时写清上一轮哪些闸门不过、根因、用户说了什么>
-【极速执行硬性要求：严禁调用 skill 工具，严禁调用 send_message，严禁读取 .gauntlet/lib/**；只跑本阶段唯一验证命令；≤5 轮工具调用内完成本阶段并执行 git add -A && git commit；最后一条回复必须以 GAUNTLET-RESULT 开头，并输出全部 6 个纯文本交接字段（revision/changes/checks/risks/reproduction/nextAction），严禁空消息或中途停手】
+【极速执行硬性要求：第一条 assistant 消息必须直接调用工具，只输出文字即判定失败！严禁调用 skill 工具，严禁调用 send_message，严禁读取 .gauntlet/lib/**！除 hardener 外严禁运行 mutate，除 reporter 外严禁运行 gate --profile full！各阶段严格遵守工具调用上限（surveyor 3, specifier 3, coder 5, cleaner 2, hardener 3, qa 2, reporter 3）；完成本阶段后立即 git add -A && git commit；最后一条回复必须以 GAUNTLET-RESULT 开头，并输出全部 6 个纯文本交接字段（revision/changes/checks/risks/reproduction/nextAction），严禁空消息或中途停手】
 ```
 
 **一次只派一个阶段，派活后立即结束当前回合（END TURN）**；严禁在后台执行时调用 `Start-Sleep`、`list_agents` 或重复 `read` 进行忙等轮询。等待系统后台完成通知（`<system-reminder>...finished`）后再进入下一步。
+
+全局时钟预算控制（900s 上限）：总耗时超过 780s 后禁止新委派阶段；若 Hardener 结束时耗时已超 600s，Leader 自行补齐 QA 报告、全量闸门复验与证据归档，确保成果完整落地。
 
 ## 2. 看结果并推进
 
