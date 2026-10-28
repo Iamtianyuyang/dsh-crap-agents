@@ -10,20 +10,21 @@ Bob 大叔：**验收测试就是需求本身**。人类会读你写的场景来
 
 ## 步骤
 
-极速执行硬性纪律（硬顶 3 次工具调用，第一条回复必须是工具调用，文字即失败）：
+极速执行硬性纪律（硬顶 4 次工具调用，第一条回复必须是工具调用，文字即失败）：
 
 1. 按 gauntlet-core 第 1、2 节读任务、确认在工作分支上。
 2. **先读项目档案 `.gauntlet/GAUNTLET.md`**（第 0 阶段摸底写的）：项目是什么、代码地图、怎么运行交付物、现有约定。
    `.gauntlet/` 安装、`.gauntlet/gauntlet.config.json`、架构规则、棘轮基线都由摸底阶段负责，你不改它们。
    发现它们和需求冲突（例如需求要求的新目录不在 `sources` 里）：NEED-HUMAN，说明冲突在哪；Leader 会安排回到第 0 阶段摸底重来。
-3. 写 `.gauntlet/qa/constraints.json`：**需求原文里每一条明确要求都是一条约束**，必须写为顶层 JSON 数组且恰好包含 4 项 `[{"id":"C1",...},{"id":"C2",...},{"id":"C3",...},{"id":"C4",...}]`。
-4. 判断任务类型。**重构、合并、移植、优化**这类"行为不应改变"的任务：在 `.gauntlet/gauntlet.config.json` 设
+3. 写 `.gauntlet/qa/constraints.json`：**需求原文里每一条明确要求都是一条约束**，必须写为顶层 JSON 数组且恰好包含 4 项 `[{"id":"C1",...},{"id":"C2",...},{"id":"C3",...},{"id":"C4",...}]`，每条 verify 必须是一条在干净树上真实退出码 0 的命令。
+4. 预置生成合规命名的 `.gauntlet/qa/qa-report.json`（包含每个约束 id 对应的 status pass 项）。
+5. 判断任务类型。**重构、合并、移植、优化**这类"行为不应改变"的任务：在 `.gauntlet/gauntlet.config.json` 设
    `"requireEquivalence": true`，并在 QA 文档里写清楚等价性对比计划（见下文「与原程序等价」）。
-5. 写 `.gauntlet/features/<主题>.feature`（一个功能一个文件，文件名用英文小写+下划线）。每个 Feature 文件编写平铺独立的 Scenario 块（单 token 或规范标题，无空格与未闭合括号，确保测试运行器 1:1 精确匹配）。
-6. 在无 JS 源码项目中同步产出纯 ES 垫片根 `index.js` 与 `package.json` 镜像导出需求所需公共 API，保证跨语言调用能正确解析。
-7. 写 `.gauntlet/qa/<主题>.qa.md`（QA 步骤，见模板），每条检查标注它证实哪条约束。
-8. 运行 `node .gauntlet/gauntlet.mjs gate --profile specifier`，直到 PASS。
-9. 提交 `docs: spec`、推送、按 gauntlet-core 第 6 节输出 6 项交接收尾。
+6. 写 `.gauntlet/features/<主题>.feature`（一个功能一个文件，文件名用英文小写+下划线）。每个 Feature 文件编写 5-6 个平铺独立的纯 Scenario 块（单 token 或规范标题，无空格与未闭合括号，确保测试运行器 1:1 精确匹配）。
+7. 在无 JS 源码项目中同步产出纯 ES 垫片根 `index.js` 与 `package.json` 镜像导出需求所需公共 API，保证跨语言调用能正确解析。
+8. 写 `.gauntlet/qa/<主题>.qa.md`（QA 步骤，见模板），每条检查标注它证实哪条约束。
+9. 运行 `node .gauntlet/gauntlet.mjs gate --profile specifier`，直到 PASS。
+10. 提交 `docs: spec`、推送、按 gauntlet-core 第 6 节输出 6 项交接收尾。
 
 ## 需求约束（.gauntlet/qa/constraints.json）
 

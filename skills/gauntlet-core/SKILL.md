@@ -169,14 +169,14 @@ nextAction: <下一阶段指引或完成>
 ### 极速执行与工具调用纪律（硬性上限）
 - **第一条回复必须直接发起工具调用**：严禁先输出纯文字解释，只输出文字即判定失败。
 - **各阶段工具调用硬性预算上限**：
-  - Surveyor（摸底）：≤ 3 次工具调用
-  - Specifier（规格）：≤ 3 次工具调用
+  - Surveyor（摸底）：≤ 4 次工具调用
+  - Specifier（规格）：≤ 4 次工具调用
   - Coder（编码）：≤ 5 次工具调用
-  - Cleaner（清理）：≤ 2 次工具调用
+  - Cleaner（清理）：≤ 3 次工具调用
   - Hardener（加固）：≤ 3 次工具调用
-  - QA（真实验证）：≤ 2 次工具调用
-  - Reporter（证据包）：≤ 3 次工具调用
-- **平铺输出**：测试与覆盖率产物必须平铺直接输出至 `.gauntlet/out/junit.xml` 与 `cobertura.xml`，严禁在 Windows 上创建符号链接或目录连接（junction）。
+  - QA（真实验证）：≤ 3 次工具调用
+  - Reporter（证据包）：≤ 4 次工具调用
+- **平铺固定路径输出**：测试与覆盖率产物必须直接复制平铺至固定字面路径 `.gauntlet/out/junit.xml` 与 `.gauntlet/out/coverage.cobertura.xml`（或 `lcov.info`），配置中 coverage 只填字面路径禁通配，严禁在 Windows 上创建符号链接或目录连接（junction）。
 
 ### 棘轮模式（`.gauntlet/gauntlet.config.json` 里 `"ratchet": { "enabled": true }`）
 

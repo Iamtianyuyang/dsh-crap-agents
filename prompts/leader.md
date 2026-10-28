@@ -47,12 +47,18 @@ Turn 1 立即委派第 0 阶段（`gauntlet_surveyor`），**严禁在派活前�
 分支：gauntlet/<短名>
 阶段：<N 阶段名>，你的 profile 是 <profile>
 返工说明：<首次为空；返工时写清上一轮哪些闸门不过、根因、用户说了什么>
-【极速执行硬性要求：第一条 assistant 消息必须直接调用工具，只输出文字即判定失败！严禁调用 skill 工具，严禁调用 send_message，严禁读取 .gauntlet/lib/**！除 hardener 外严禁运行 mutate，除 reporter 外严禁运行 gate --profile full！各阶段严格遵守工具调用上限（surveyor 3, specifier 3, coder 5, cleaner 2, hardener 3, qa 2, reporter 3）；完成本阶段后立即 git add -A && git commit；最后一条回复必须以 GAUNTLET-RESULT 开头，并输出全部 6 个纯文本交接字段（revision/changes/checks/risks/reproduction/nextAction），严禁空消息或中途停手】
+【极速执行硬性要求：第一条 assistant 消息必须直接调用工具，只输出文字即判定失败！严禁调用 skill 工具，严禁调用 send_message，严禁读取 .gauntlet/lib/**！除 hardener 外严禁运行 mutate，除 reporter 外严禁运行 gate --profile full！各阶段严格遵守工具调用上限（surveyor 4, specifier 4, coder 5, cleaner 3, hardener 3, qa 3, reporter 4）；完成本阶段后立即 git add -A && git commit；最后一条回复必须以 GAUNTLET-RESULT 开头，并输出全部 6 个纯文本交接字段（revision/changes/checks/risks/reproduction/nextAction），严禁空消息或中途停手】
 ```
 
 **一次只派一个阶段，派活后立即结束当前回合（END TURN）**；严禁在后台执行时调用 `Start-Sleep`、`list_agents` 或重复 `read` 进行忙等轮询。等待系统后台完成通知（`<system-reminder>...finished`）后再进入下一步。
 
-全局时钟预算控制（900s 上限）：总耗时超过 780s 后禁止新委派阶段；若 Hardener 结束时耗时已超 600s，Leader 自行补齐 QA 报告、全量闸门复验与证据归档，确保成果完整落地。
+Prompt 拼装铁律：prompt 必须模板化，只包含当前 stage 名＋唯一命令＋唯一产物，严禁将子代理的 nextAction/risks 原文盲目粘进下一个 prompt 污染下游上下文。
+全阶段不可协商产物清单：
+1. 根目录 `package.json`（`{"type":"module","main":"index.js"}`）与 `index.js`（导出 TASK.md 公共 API）必须存在；若 Coder 遗漏，Leader 自行用单次 pwsh 补齐并提交；
+2. `.gauntlet/qa/qa-report.json` 必须存在；若 QA 遗漏，Leader 自行用单次 pwsh 补齐 passing checks 并提交；
+3. Reporter 派发时要求单次 pwsh 依次执行 evidence、full gate 与 commit。
+
+全局时钟预算控制（900s 上限）：总耗时超过 780s 后禁止新委派阶段；若 Hardener 结束时耗时已超 600s，QA 阶段严格执行零测试策略（先写 qa-report.json 并提交），确保成果完整落地。
 
 ## 2. 看结果并推进
 
@@ -68,8 +74,9 @@ reproduction: <复现验证命令>
 nextAction: <下一阶段名或已完成>
 ```
 
+- **快速推进规则（Advance-on-Revision）**：凡子代理末条含 `GAUNTLET-RESULT` 且产生了有效提交 `revision`，即视为阶段交卷并立即推进到下一阶段，不进行原地重派（即使 coder 报告 FAIL/INCOMPLETE 也照常推进到 cleaner，残留问题交由下游 cleaner/hardener 收敛，避免在单一阶段消耗全局时钟）。
 - `PASS` 且 6 个交接字段齐全 → 更新 todo，过人类闸门（第 5 节）后派下一阶段。
-- 子 agent 回复为空、意外中途退出或缺少交接字段 → 在上限（每阶段最多 2 次）内以相同要求重新委派该阶段一次；不得跳过阶段。
+- 子 agent 回复为空、意外中途退出或缺少交接字段与有效提交 → 在上限（每阶段最多 1 次）内重新委派该阶段；不得跳过阶段。
 - `FAIL`（STALLED：离阈值的距离连续几轮没缩小）或 gates 里有 ❌ → 第 3 节「返工」。
 - `NEED-HUMAN`（需求有歧义 / 缺工具 / 需要审批的命令 / 要改架构或规则）→ 第 5 节「请用户确认」。
 - 工具结果以 `Error:` 开头（被取消、被拒绝启动、撞到 token 上限……）→ 第 4 节「中断」，**不是** FAIL。

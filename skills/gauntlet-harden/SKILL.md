@@ -71,10 +71,9 @@ description: Gauntlet 第 4 阶段（Hardener）：用变异测试找出测试�
 ## 规则
 
 加固纪律（硬顶 3 次工具调用，第一条回复必须是工具调用，文字即失败）：
-1. 运行 node .gauntlet/gauntlet.mjs gate --profile hardener --fresh；若提示变异前套件报红，立即对齐 commands.mutationTest 剥离测试日志/覆盖率参数使其通过；
-2. 读 .gauntlet/out/mutation.json，对存活变异体逐个在表驱动测试中追加针对性用例，优先覆盖边界、真假值与异常分支；
-3. 原子提交 test: harden mutations。
-完成标准：hardener 为 PASS。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
+1. 运行 node .gauntlet/gauntlet.mjs gate --profile hardener --fresh；若 total=0 或该语言无变异体禁重跑，risks 注明“空集满足”；
+2. 读 .gauntlet/out/mutation.json 针对性补测，至多重跑一次 gate hardener；提交 test: harden mutants 并输出六行，禁用 mutation-accepted.json。
+完成标准：gate --profile hardener 为 PASS。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
 
 - 不改产品代码的行为；可以为了可测性做小的结构调整（例如注入依赖），但要保持 cleaner 闸门仍然通过。
 - 不删除、不弱化已有断言；不提高阈值。

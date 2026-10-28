@@ -13,9 +13,9 @@ description: Gauntlet 第 0 阶段（Surveyor）：在规格之前摸清目标�
 
 ## 步骤
 
-极速执行硬性纪律（硬顶 3 次工具调用，第一条回复必须是工具调用，文字即失败）：
+极速执行硬性纪律（硬顶 4 次工具调用，第一条回复必须是工具调用，文字即失败）：
 1. 运行 node "$env:DSH_GAUNTLET_KIT_DIR/install-kit.mjs" . 并将需求/临时说明加到 .git/info/exclude（确保 .gauntlet/ 默认被忽略）；
-2. 配置 .gauntlet/gauntlet.config.json（adapter、sources、commands 与合理阈值），commands.test 必须平铺输出到 .gauntlet/out/junit.xml 与 cobertura.xml（严禁创建符号链接或 Windows junction）；commands.mutationTest 与测试项目严格对齐；
+2. 配置 .gauntlet/gauntlet.config.json（adapter、sources、commands 与合理阈值），commands.test 末尾追加复制步骤把覆盖率报告落到固定字面路径 .gauntlet/out/coverage.cobertura.xml（node 用 .gauntlet/out/lcov.info），coverage 只填该字面路径禁通配；commands.mutationTest 与测试项目严格对齐；
 3. 运行 node .gauntlet/gauntlet.mjs doctor 并提交 chore: survey。不跑冗余全量测试或变异测试。
 完成标准：doctor 全绿、GAUNTLET.md 写好。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
 

@@ -10,9 +10,9 @@ AI 写代码的速度远超人类读代码的速度。所以人类不读代码�
 
 ## 步骤
 
-全量复验纪律（硬顶 3 次工具调用，第一条回复必须是工具调用，文字即失败）：
-1. 确认 qa-report.json 覆盖全部约束，在干净工作树下运行 node .gauntlet/gauntlet.mjs gate --profile full 与 node .gauntlet/gauntlet.mjs evidence；
-2. 若仅因产物缺项失败，补齐后在干净树重验，确保 15/15 闸门全绿并提交 chore: evidence。
+全量复验纪律（硬顶 4 次工具调用，第一条回复必须是工具调用，文字即失败）：
+1. 在 1 次 pwsh 里依次执行 node .gauntlet/gauntlet.mjs gate --profile full、node .gauntlet/gauntlet.mjs evidence 与 git commit；
+2. 若 constraints/qa 红就地最小修复并提交，确保 15/15 闸门全绿并在 checks 记录 evidence 路径。
 完成标准：full 为 PASS 且证据包生成并已提交。按 6 个交接字段输出 GAUNTLET-RESULT: PASS。
 
 1. 确认在工作分支上（gauntlet-core）。
